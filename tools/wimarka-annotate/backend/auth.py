@@ -68,10 +68,26 @@ def get_current_admin_user(current_user: User = Depends(get_current_user)):
         )
     return current_user
 
+def get_current_evaluator_user(current_user: User = Depends(get_current_user)):
+    if not current_user.is_evaluator:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Evaluator permissions required"
+        )
+    return current_user
+
+def get_current_admin_or_evaluator_user(current_user: User = Depends(get_current_user)):
+    if not (current_user.is_admin or current_user.is_evaluator):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or evaluator permissions required"
+        )
+    return current_user
+
 def authenticate_user(db: Session, email: str, password: str):
     user = db.query(User).filter(User.email == email).first()
     if not user:
         return False
     if not verify_password(password, user.hashed_password):
         return False
-    return user 
+    return user

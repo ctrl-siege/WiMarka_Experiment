@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { LogOut, User, BarChart3, FileText, Settings, HelpCircle, Home } from 'lucide-react';
+import { LogOut, User, BarChart3, FileText, Settings, HelpCircle, Home, CheckSquare } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -24,6 +24,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onShowGuidelines }) => {
 
   const isActive = (path: string) => location.pathname === path;
 
+  // Navigation items for regular users only (not for admins or evaluators)
   const navItems = [
     { path: '/dashboard', icon: Home, label: 'Dashboard' },
     { path: '/annotate', icon: FileText, label: 'Annotate' },
@@ -32,6 +33,11 @@ const Layout: React.FC<LayoutProps> = ({ children, onShowGuidelines }) => {
 
   const adminNavItems = [
     { path: '/admin', icon: Settings, label: 'Admin Dashboard' },
+  ];
+
+  const evaluatorNavItems = [
+    { path: '/evaluator', icon: CheckSquare, label: 'Evaluator Dashboard' },
+    { path: '/my-evaluations', icon: BarChart3, label: 'My Evaluations' },
   ];
 
   return (
@@ -47,7 +53,8 @@ const Layout: React.FC<LayoutProps> = ({ children, onShowGuidelines }) => {
               </Link>
               
               <div className="hidden md:flex space-x-1 lg:space-x-2">
-                {navItems.map((item) => (
+                {/* Show user navigation items only for regular users (not admin or evaluator) */}
+                {!user?.is_admin && !user?.is_evaluator && navItems.map((item) => (
                   <Link
                     key={item.path}
                     to={item.path}
@@ -62,7 +69,24 @@ const Layout: React.FC<LayoutProps> = ({ children, onShowGuidelines }) => {
                   </Link>
                 ))}
                 
+                {/* Show admin navigation items only for admin users */}
                 {user?.is_admin && adminNavItems.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`flex items-center space-x-1 px-2 lg:px-3 py-2 rounded-md text-xs lg:text-sm font-medium transition-colors duration-200 ${
+                      isActive(item.path)
+                        ? 'text-primary-600 bg-primary-50'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    <span className="hidden lg:inline">{item.label}</span>
+                  </Link>
+                ))}
+
+                {/* Show evaluator navigation items only for evaluator users */}
+                {user?.is_evaluator && evaluatorNavItems.map((item) => (
                   <Link
                     key={item.path}
                     to={item.path}
@@ -92,17 +116,27 @@ const Layout: React.FC<LayoutProps> = ({ children, onShowGuidelines }) => {
                 </button>
               )}
               
-              <div className="flex items-center space-x-2">
-                <User className="h-5 w-5 text-gray-400" />
-                <span className="text-sm text-gray-700">
-                  {user?.first_name} {user?.last_name}
-                </span>
-                {user?.is_admin && (
-                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                    Admin
+              <Link
+                to="/profile"
+                className="flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors duration-200"
+              >
+                <div className="flex items-center space-x-2">
+                  <User className="h-5 w-5 text-gray-400" />
+                  <span className="text-sm text-gray-700">
+                    {user?.first_name} {user?.last_name}
                   </span>
-                )}
-              </div>
+                  {user?.is_admin && (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                      Admin
+                    </span>
+                  )}
+                  {user?.is_evaluator && !user?.is_admin && (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      Evaluator
+                    </span>
+                  )}
+                </div>
+              </Link>
               
               <button
                 onClick={handleLogout}

@@ -120,15 +120,9 @@ const Register: React.FC = () => {
     setError('');
     
     if (currentStep === 1) {
-      // Just move to next step after user type selection
-      setCurrentStep(2);
-      return;
-    }
-    
-    if (currentStep === 2) {
-      const basicInfoValid = formData.first_name.trim() && formData.last_name.trim() && formData.languages.length > 0;
+      const basicInfoValid = formData.first_name.trim() && formData.last_name.trim();
       if (basicInfoValid) {
-        setCurrentStep(3);
+        setCurrentStep(2);
       } else {
         setError('Please complete all required fields before continuing');
       }
@@ -152,7 +146,7 @@ const Register: React.FC = () => {
         last_name: formData.last_name,
         preferred_language: formData.preferred_language,
         languages: formData.languages,
-        is_evaluator: formData.user_type === 'evaluator'
+        user_type: formData.user_type, // Include user_type in registration data
       };
       await register(registerData);
       setRegistrationSuccess(true);
@@ -236,10 +230,7 @@ const Register: React.FC = () => {
                 <Check className="h-8 w-8 text-green-500" />
               </div>
               <h3 className="text-xl font-medium text-green-800 mb-2">Registration successful!</h3>
-              <p className="text-sm text-green-600 mb-4">
-                Your account has been created successfully as a{' '}
-                <span className="font-semibold">{formData.user_type}</span>.
-              </p>
+              <p className="text-sm text-green-600 mb-4">Your account has been created successfully.</p>
               <p className="text-gray-500 text-sm">Redirecting to login page...</p>
               <div className="mt-4 w-24 h-1 bg-gray-200 rounded-full overflow-hidden">
                 <div className="h-full bg-green-500 animate-pulse"></div>
@@ -260,81 +251,6 @@ const Register: React.FC = () => {
             )}
 
             {currentStep === 1 && (
-              <div className="space-y-6 animate-fadeIn">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-4">
-                    Choose your role
-                  </label>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div
-                      onClick={() => handleUserTypeChange('annotator')}
-                      className={`relative rounded-lg border-2 p-4 cursor-pointer transition-all ${
-                        formData.user_type === 'annotator'
-                          ? 'border-primary-500 bg-primary-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-start">
-                        <div className="flex-shrink-0">
-                          <Users className={`h-6 w-6 ${
-                            formData.user_type === 'annotator' ? 'text-primary-600' : 'text-gray-400'
-                          }`} />
-                        </div>
-                        <div className="ml-3 flex-1">
-                          <h3 className={`text-sm font-medium ${
-                            formData.user_type === 'annotator' ? 'text-primary-900' : 'text-gray-900'
-                          }`}>
-                            Annotator
-                          </h3>
-                          <p className={`text-sm ${
-                            formData.user_type === 'annotator' ? 'text-primary-700' : 'text-gray-500'
-                          }`}>
-                            Review and annotate machine translations for quality and accuracy.
-                          </p>
-                        </div>
-                        {formData.user_type === 'annotator' && (
-                          <Check className="h-5 w-5 text-primary-600" />
-                        )}
-                      </div>
-                    </div>
-
-                    <div
-                      onClick={() => handleUserTypeChange('evaluator')}
-                      className={`relative rounded-lg border-2 p-4 cursor-pointer transition-all ${
-                        formData.user_type === 'evaluator'
-                          ? 'border-primary-500 bg-primary-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-start">
-                        <div className="flex-shrink-0">
-                          <UserCheck className={`h-6 w-6 ${
-                            formData.user_type === 'evaluator' ? 'text-primary-600' : 'text-gray-400'
-                          }`} />
-                        </div>
-                        <div className="ml-3 flex-1">
-                          <h3 className={`text-sm font-medium ${
-                            formData.user_type === 'evaluator' ? 'text-primary-900' : 'text-gray-900'
-                          }`}>
-                            Evaluator
-                          </h3>
-                          <p className={`text-sm ${
-                            formData.user_type === 'evaluator' ? 'text-primary-700' : 'text-gray-500'
-                          }`}>
-                            Evaluate and review annotations made by other users for quality assurance.
-                          </p>
-                        </div>
-                        {formData.user_type === 'evaluator' && (
-                          <Check className="h-5 w-5 text-primary-600" />
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {currentStep === 2 && (
               <div className="space-y-4 animate-fadeIn">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
@@ -437,7 +353,7 @@ const Register: React.FC = () => {
                           ))}
                         </div>
                         <p className="mt-2 text-xs text-gray-500">
-                          This will be your primary language for {formData.user_type === 'evaluator' ? 'evaluation' : 'translation'} work
+                          This will be your primary language for translation work
                         </p>
                       </div>
                     )}
@@ -452,7 +368,7 @@ const Register: React.FC = () => {
               </div>
             )}
 
-            {currentStep === 3 && (
+            {currentStep === 2 && (
               <div className="space-y-4 animate-slideIn">
                 <div>
                   <label htmlFor="username" className="block text-sm font-medium text-gray-700">
@@ -546,6 +462,42 @@ const Register: React.FC = () => {
                     placeholder="Confirm your password"
                   />
                   {hasError('confirmPassword') && <p className="mt-1 text-sm text-red-600">{getFieldError('confirmPassword')}</p>}
+                </div>
+              </div>
+            )}
+
+            {currentStep === 3 && (
+              <div className="space-y-4 animate-slideIn">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    User Type
+                  </label>
+                  <div className="flex gap-4">
+                    <button
+                      type="button"
+                      onClick={() => handleUserTypeChange('annotator')}
+                      className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 
+                        ${formData.user_type === 'annotator' ? 'bg-primary-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}
+                      `}
+                    >
+                      <Users className="h-5 w-5" />
+                      Annotator
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUserTypeChange('evaluator')}
+                      className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 
+                        ${formData.user_type === 'evaluator' ? 'bg-primary-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}
+                      `}
+                    >
+                      <UserCheck className="h-5 w-5" />
+                      Evaluator
+                    </button>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-500">
+                    Select your user type. As an evaluator, you will have access to additional tools for reviewing translations.
+                  </p>
+                  {hasError('user_type') && <p className="mt-1 text-sm text-red-600">{getFieldError('user_type')}</p>}
                 </div>
               </div>
             )}

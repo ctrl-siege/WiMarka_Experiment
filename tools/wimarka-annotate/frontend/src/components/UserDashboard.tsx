@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { annotationsAPI, sentencesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Annotation } from '../types';
 import { 
-  Home, 
   FileText, 
-  BarChart3, 
   Clock, 
   Star, 
   TrendingUp, 
   Calendar,
   CheckCircle,
-  AlertCircle,
-  Trophy
+  ArrowRight,
+  BookOpen,
+  User,
+  PlusCircle,
+  ChevronRight,
+  RefreshCcw
 } from 'lucide-react';
 
 interface UserStats {
@@ -22,7 +25,16 @@ interface UserStats {
   averageQualityScore: number;
   totalTimeSpent: number;
   annotationsThisWeek: number;
-  streak: number;
+}
+
+interface OnboardingStep {
+  id: string;
+  title: string;
+  description: string;
+  icon: React.ElementType;
+  buttonText: string;
+  buttonLink: string;
+  completed: boolean;
 }
 
 const UserDashboard: React.FC = () => {
@@ -30,20 +42,70 @@ const UserDashboard: React.FC = () => {
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'home' | 'annotate' | 'history'>('home');
   const [availableSentences, setAvailableSentences] = useState(0);
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // User onboarding journey steps
+  const [onboardingSteps, setOnboardingSteps] = useState<OnboardingStep[]>([
+    {
+      id: 'read_guidelines',
+      title: 'Read Guidelines',
+      description: 'Understand the annotation guidelines before starting your work',
+      icon: BookOpen,
+      buttonText: 'View Guidelines',
+      buttonLink: '#',
+      completed: user?.guidelines_seen || false
+    },
+    {
+      id: 'first_annotation',
+      title: 'Complete First Annotation',
+      description: 'Start your first annotation task to get familiar with the process',
+      icon: PlusCircle,
+      buttonText: 'Start Annotating',
+      buttonLink: '/annotate',
+      completed: stats?.completedAnnotations ? stats.completedAnnotations > 0 : false
+    },
+    {
+      id: 'profile_setup',
+      title: 'Complete Your Profile',
+      description: 'Add your language preferences and expertise details',
+      icon: User,
+      buttonText: 'Update Profile',
+      buttonLink: '/profile',
+      completed: false
+    }
+  ]);
 
   useEffect(() => {
     loadDashboardData();
+    
+    // Close welcome message after 5 seconds
+    const timer = setTimeout(() => {
+      setShowWelcome(false);
+    }, 5000);
+    
+    return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    // Update onboarding step completion status when stats change
+    if (stats) {
+      setOnboardingSteps(currentSteps => 
+        currentSteps.map(step => {
+          if (step.id === 'first_annotation') {
+            return {...step, completed: stats.completedAnnotations > 0};
+          }
+          return step;
+        })
+      );
+    }
+  }, [stats]);
 
   const loadDashboardData = async () => {
     setIsLoading(true);
     try {
-      const [annotationsData, sentencesData] = await Promise.all([
-        annotationsAPI.getMyAnnotations(),
-        sentencesAPI.getUnannotatedSentences(0, 1) // Just to get count
-      ]);
+      const annotationsData = await annotationsAPI.getMyAnnotations();
       
       setAnnotations(annotationsData);
       
@@ -66,24 +128,20 @@ const UserDashboard: React.FC = () => {
         new Date(a.created_at) >= oneWeekAgo
       ).length;
       
-      // Calculate streak (simplified - consecutive days with annotations)
-      const streak = calculateStreak(annotationsData);
-      
       setStats({
         totalAnnotations,
         completedAnnotations,
         inProgressAnnotations,
         averageQualityScore,
         totalTimeSpent,
-        annotationsThisWeek,
-        streak
+        annotationsThisWeek
       });
       
       // Get available sentences count
       try {
         const allSentences = await sentencesAPI.getUnannotatedSentences(0, 1000);
         setAvailableSentences(allSentences.length);
-      } catch (error) {
+      } catch {
         setAvailableSentences(0);
       }
       
@@ -94,33 +152,10 @@ const UserDashboard: React.FC = () => {
     }
   };
 
-  const calculateStreak = (annotations: Annotation[]): number => {
-    if (annotations.length === 0) return 0;
-    
-    // Group annotations by date
-    const annotationsByDate = new Map<string, number>();
-    annotations.forEach(annotation => {
-      const date = new Date(annotation.created_at).toDateString();
-      annotationsByDate.set(date, (annotationsByDate.get(date) || 0) + 1);
-    });
-    
-    // Calculate current streak
-    let streak = 0;
-    const today = new Date();
-    
-    for (let i = 0; i < 30; i++) { // Check last 30 days
-      const checkDate = new Date(today);
-      checkDate.setDate(today.getDate() - i);
-      const dateString = checkDate.toDateString();
-      
-      if (annotationsByDate.has(dateString)) {
-        streak++;
-      } else if (i > 0) { // Allow for today to be empty
-        break;
-      }
-    }
-    
-    return streak;
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadDashboardData();
+    setTimeout(() => setRefreshing(false), 500);
   };
 
   const formatTime = (seconds: number): string => {
@@ -138,288 +173,342 @@ const UserDashboard: React.FC = () => {
   };
 
   const getRecentAnnotations = (): Annotation[] => {
-    return annotations
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, 5);
+    return [...annotations]
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, 3);
   };
 
+  // Determine user level based on completed annotations
+  const getUserLevel = (): { level: string; title: string; nextMilestone: number } => {
+    const completed = stats?.completedAnnotations || 0;
+    
+    if (completed < 10) {
+      return { level: 'Beginner', title: 'Novice Annotator', nextMilestone: 10 };
+    } else if (completed < 50) {
+      return { level: 'Intermediate', title: 'Skilled Annotator', nextMilestone: 50 };
+    } else if (completed < 100) {
+      return { level: 'Advanced', title: 'Expert Annotator', nextMilestone: 100 };
+    } else {
+      return { level: 'Master', title: 'Master Annotator', nextMilestone: 500 };
+    }
+  };
+  
+  // Calculate progress to next level
+  const getProgressToNextLevel = (): number => {
+    const completed = stats?.completedAnnotations || 0;
+    const { nextMilestone } = getUserLevel();
+    
+    let previousMilestone = 0;
+    if (completed >= 10) previousMilestone = 10;
+    if (completed >= 50) previousMilestone = 50;
+    if (completed >= 100) previousMilestone = 100;
+    
+    const total = nextMilestone - previousMilestone;
+    const current = completed - previousMilestone;
+    return Math.round((current / total) * 100);
+  };
+
+  const userLevel = getUserLevel();
+  const progressToNextLevel = getProgressToNextLevel();
+
+  // Show loading state
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <div className="text-center">
-          <BarChart3 className="h-12 w-12 text-gray-400 mx-auto animate-pulse" />
-          <p className="mt-4 text-gray-600">Loading your dashboard...</p>
+      <div className="min-h-screen bg-gray-50 flex justify-center">
+        <div className="max-w-6xl w-full py-8 px-4">
+          <div className="animate-pulse space-y-8">
+            <div className="h-32 bg-gray-200 rounded-lg w-full"></div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="h-48 bg-gray-200 rounded-lg"></div>
+              <div className="h-48 bg-gray-200 rounded-lg"></div>
+              <div className="h-48 bg-gray-200 rounded-lg"></div>
+            </div>
+            <div className="h-64 bg-gray-200 rounded-lg"></div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Welcome back, {user?.first_name}!</h1>
-          <div className="flex items-center space-x-2 text-sm text-gray-500">
-            <Calendar className="h-4 w-4" />
-            <span>{new Date().toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}</span>
+    <div className="min-h-screen bg-gray-50 pb-12">
+      {/* Welcome message that disappears after a few seconds */}
+      {showWelcome && (
+        <div className="bg-primary-50 border-l-4 border-primary-500 p-4 fixed top-20 right-4 z-10 max-w-md shadow-lg rounded-lg animate-fadeIn">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <CheckCircle className="h-5 w-5 text-primary-400" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm leading-5 font-medium text-primary-800">
+                Welcome back, {user?.first_name}! 👋
+              </p>
+              <p className="mt-1 text-sm leading-5 text-primary-700">
+                You have {availableSentences} new {availableSentences === 1 ? 'sentence' : 'sentences'} to annotate.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        {/* Header with refresh button */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Your Dashboard</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Track your progress and manage your annotation work
+            </p>
+          </div>
+          <button 
+            onClick={handleRefresh} 
+            className="flex items-center space-x-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all"
+          >
+            <RefreshCcw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
+
+        {/* User Progress Overview */}
+        <div className="mb-8">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <User className="h-5 w-5 text-primary-500" />
+                    <h2 className="text-lg font-semibold text-gray-800">{user?.first_name} {user?.last_name}</h2>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="bg-primary-100 text-primary-800 text-xs font-medium px-2.5 py-1 rounded-full">
+                      {userLevel.title}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      Level: {userLevel.level}
+                    </span>
+                  </div>
+                  
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-gray-700">Progress to next level</span>
+                      <span className="text-xs font-medium text-primary-600">{progressToNextLevel}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-primary-500 h-2 rounded-full transition-all duration-1000 ease-out" 
+                        style={{ width: `${progressToNextLevel}%` }}
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {stats?.completedAnnotations || 0} / {userLevel.nextMilestone} annotations completed
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="lg:col-span-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <FileText className="h-5 w-5 text-blue-500" />
+                        <h3 className="text-sm font-medium text-gray-700">Total Annotations</h3>
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">{stats?.totalAnnotations || 0}</p>
+                    </div>
+                    
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <CheckCircle className="h-5 w-5 text-green-500" />
+                        <h3 className="text-sm font-medium text-gray-700">Completed</h3>
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">{stats?.completedAnnotations || 0}</p>
+                    </div>
+                    
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Clock className="h-5 w-5 text-amber-500" />
+                        <h3 className="text-sm font-medium text-gray-700">Time Spent</h3>
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {formatTime(stats?.totalTimeSpent || 0)}
+                      </p>
+                    </div>
+                    
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Calendar className="h-5 w-5 text-purple-500" />
+                        <h3 className="text-sm font-medium text-gray-700">This Week</h3>
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">{stats?.annotationsThisWeek || 0}</p>
+                    </div>
+                    
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Star className="h-5 w-5 text-yellow-500" />
+                        <h3 className="text-sm font-medium text-gray-700">Avg. Quality</h3>
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {stats?.averageQualityScore ? stats.averageQualityScore.toFixed(1) : 'N/A'}
+                      </p>
+                    </div>
+                    
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <TrendingUp className="h-5 w-5 text-indigo-500" />
+                        <h3 className="text-sm font-medium text-gray-700">Available</h3>
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">{availableSentences}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <span className="text-sm text-gray-500">
+                    {getProgressPercentage()}% of your annotations are completed
+                  </span>
+                </div>
+                <div>
+                  <Link 
+                    to="/annotate" 
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md transition-colors"
+                  >
+                    Start Annotating
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         
-        {/* Tab Navigation */}
-        <div className="border-b border-gray-200 mb-6">
-          <nav className="-mb-px flex space-x-8">
-            {[
-              { key: 'home', label: 'Home', icon: Home },
-              { key: 'annotate', label: 'Start Annotating', icon: FileText },
-              { key: 'history', label: 'My History', icon: BarChart3 },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key as any)}
-                className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === tab.key
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <tab.icon className="h-4 w-4" />
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {/* Home Tab */}
-        {activeTab === 'home' && stats && (
-          <div className="space-y-6">
-            {/* Welcome Section */}
-            <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg p-8 text-white">
-              <h2 className="text-3xl font-bold mb-2">Ready to make a difference?</h2>
-              <p className="text-blue-100 text-lg mb-4">
-                Help improve machine translation quality by providing your expert annotations.
-              </p>
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <Trophy className="h-5 w-5 text-yellow-300" />
-                  <span className="text-sm">{stats.streak} day streak!</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Star className="h-5 w-5 text-yellow-300" />
-                  <span className="text-sm">Avg. Quality: {stats.averageQualityScore.toFixed(1)}/5</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border">
-                <div className="flex items-center">
-                  <div className="p-2 bg-blue-200 rounded-lg">
-                    <FileText className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div className="ml-3">
-                    <p className="text-sm font-medium text-blue-600">Total Annotations</p>
-                    <p className="text-xl font-bold text-blue-900">{stats.totalAnnotations}</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border">
-                <div className="flex items-center">
-                  <div className="p-2 bg-green-200 rounded-lg">
-                    <CheckCircle className="h-5 w-5 text-green-600" />
-                  </div>
-                  <div className="ml-3">
-                    <p className="text-sm font-medium text-green-600">Completed</p>
-                    <p className="text-xl font-bold text-green-900">{stats.completedAnnotations}</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border">
-                <div className="flex items-center">
-                  <div className="p-2 bg-purple-200 rounded-lg">
-                    <Clock className="h-5 w-5 text-purple-600" />
-                  </div>
-                  <div className="ml-3">
-                    <p className="text-sm font-medium text-purple-600">Time Invested</p>
-                    <p className="text-xl font-bold text-purple-900">{formatTime(stats.totalTimeSpent)}</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border">
-                <div className="flex items-center">
-                  <div className="p-2 bg-orange-200 rounded-lg">
-                    <TrendingUp className="h-5 w-5 text-orange-600" />
-                  </div>
-                  <div className="ml-3">
-                    <p className="text-sm font-medium text-orange-600">This Week</p>
-                    <p className="text-xl font-bold text-orange-900">{stats.annotationsThisWeek}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Progress Overview */}
-            <div className="bg-white rounded-lg border shadow-sm p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Progress</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-medium text-gray-700">Completion Rate</span>
-                    <span className="text-sm text-gray-500">{getProgressPercentage()}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div 
-                      className="bg-gradient-to-r from-green-400 to-green-500 h-3 rounded-full transition-all duration-300" 
-                      style={{ width: `${getProgressPercentage()}%` }}
-                    ></div>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {stats.completedAnnotations} of {stats.totalAnnotations} annotations completed
-                  </p>
-                </div>
-                
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-medium text-gray-700">Available Sentences</span>
-                    <span className="text-sm text-gray-500">{availableSentences} left</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    {availableSentences > 0 ? (
-                      <div className="flex items-center text-green-600">
-                        <CheckCircle className="h-4 w-4 mr-1" />
-                        <span className="text-sm">Ready to continue</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center text-gray-500">
-                        <AlertCircle className="h-4 w-4 mr-1" />
-                        <span className="text-sm">All caught up!</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="bg-white rounded-lg border shadow-sm p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button
-                  onClick={() => setActiveTab('annotate')}
-                  disabled={availableSentences === 0}
-                  className={`flex items-center p-4 border-2 border-dashed rounded-lg transition-colors ${
-                    availableSentences > 0 
-                      ? 'border-blue-300 hover:border-blue-400 hover:bg-blue-50' 
-                      : 'border-gray-200 cursor-not-allowed opacity-50'
-                  }`}
-                >
-                  <FileText className={`h-8 w-8 mr-3 ${availableSentences > 0 ? 'text-blue-500' : 'text-gray-400'}`} />
-                  <div className="text-left">
-                    <p className={`font-medium ${availableSentences > 0 ? 'text-gray-900' : 'text-gray-500'}`}>
-                      {availableSentences > 0 ? 'Continue Annotating' : 'No New Sentences'}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {availableSentences > 0 
-                        ? `${availableSentences} sentences waiting` 
-                        : 'Check back later for new content'}
-                    </p>
-                  </div>
-                </button>
-                
-                <button
-                  onClick={() => setActiveTab('history')}
-                  className="flex items-center p-4 border-2 border-dashed border-green-300 rounded-lg hover:border-green-400 hover:bg-green-50 transition-colors"
-                >
-                  <BarChart3 className="h-8 w-8 text-green-500 mr-3" />
-                  <div className="text-left">
-                    <p className="font-medium text-gray-900">Review Your Work</p>
-                    <p className="text-sm text-gray-500">View annotation history and stats</p>
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            {/* Recent Activity */}
-            {getRecentAnnotations().length > 0 && (
-              <div className="bg-white rounded-lg border shadow-sm p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
-                <div className="space-y-3">
-                  {getRecentAnnotations().map((annotation) => (
-                    <div key={annotation.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <div className={`w-2 h-2 rounded-full ${
-                          annotation.annotation_status === 'completed' ? 'bg-green-400' : 'bg-yellow-400'
-                        }`} />
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            Sentence #{annotation.sentence_id}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {annotation.sentence.source_language.toUpperCase()} → {annotation.sentence.target_language.toUpperCase()}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-gray-500">
-                          {new Date(annotation.created_at).toLocaleDateString()}
-                        </p>
-                        {annotation.overall_quality && (
-                          <p className="text-xs font-medium text-gray-700">
-                            Quality: {annotation.overall_quality}/5
-                          </p>
+        {/* User onboarding journey */}
+        {onboardingSteps.some(step => !step.completed) && (
+          <div className="mb-8 animate-fadeIn">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Get Started with Annotation</h2>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden p-6">
+              <div className="space-y-4">
+                {onboardingSteps.map((step, index) => (
+                  <div key={step.id} className={`
+                    ${step.completed ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'} 
+                    border p-4 rounded-lg transition-all duration-300
+                  `}>
+                    <div className="flex items-center">
+                      <div className={`
+                        ${step.completed ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'} 
+                        flex-shrink-0 rounded-full p-2
+                      `}>
+                        {step.completed ? (
+                          <CheckCircle className="h-5 w-5" />
+                        ) : (
+                          <step.icon className="h-5 w-5" />
                         )}
                       </div>
+                      <div className="ml-4 flex-1">
+                        <div className="flex items-center justify-between">
+                          <h3 className={`
+                            text-sm font-medium 
+                            ${step.completed ? 'text-green-800' : 'text-gray-900'}
+                          `}>
+                            {index + 1}. {step.title}
+                            {step.completed && ' ✓'}
+                          </h3>
+                          {!step.completed && (
+                            <Link 
+                              to={step.buttonLink} 
+                              className="inline-flex items-center text-xs font-medium text-primary-600 hover:text-primary-500"
+                            >
+                              {step.buttonText}
+                              <ChevronRight className="ml-1 h-3 w-3" />
+                            </Link>
+                          )}
+                        </div>
+                        <p className={`
+                          mt-1 text-xs 
+                          ${step.completed ? 'text-green-600' : 'text-gray-500'}
+                        `}>
+                          {step.description}
+                        </p>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            )}
+            </div>
           </div>
         )}
 
-        {/* Placeholder for other tabs */}
-        {activeTab === 'annotate' && (
-          <div className="text-center py-12">
-            <FileText className="h-16 w-16 text-blue-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Start Annotating</h3>
-            <p className="text-gray-500 mb-4">
-              This tab would redirect to the main annotation interface.
-            </p>
-            <button 
-              onClick={() => window.location.href = '/annotate'}
-              className="btn-primary"
+        {/* Recent activity */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-800">Recent Activity</h2>
+            <Link 
+              to="/my-annotations" 
+              className="text-sm font-medium text-primary-600 hover:text-primary-500"
             >
-              Go to Annotation Interface
-            </button>
+              View all
+            </Link>
           </div>
-        )}
-
-        {activeTab === 'history' && (
-          <div className="text-center py-12">
-            <BarChart3 className="h-16 w-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Annotation History</h3>
-            <p className="text-gray-500 mb-4">
-              This tab would redirect to your annotation history.
-            </p>
-            <button 
-              onClick={() => window.location.href = '/my-annotations'}
-              className="btn-primary"
-            >
-              View My Annotations
-            </button>
-          </div>
-        )}
+          
+          {getRecentAnnotations().length > 0 ? (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden divide-y divide-gray-200">
+              {getRecentAnnotations().map((annotation) => {
+                return (
+                  <div key={annotation.id} className="p-5 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
+                          {annotation.sentence.source_text}
+                        </h3>
+                        <div className="mt-1 flex items-center space-x-4">
+                          <span className={`
+                            text-xs font-medium rounded-full px-2 py-0.5
+                            ${annotation.annotation_status === 'completed' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-yellow-100 text-yellow-800'}
+                          `}>
+                            {annotation.annotation_status.replace('_', ' ')}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {formatTime(annotation.time_spent_seconds || 0)} spent
+                          </span>
+                          {annotation.overall_quality && (
+                            <span className="flex items-center text-xs text-gray-500">
+                              <Star className="h-3 w-3 text-yellow-400 mr-1" />
+                              {annotation.overall_quality.toFixed(1)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <Link 
+                        to={`/annotate/${annotation.sentence_id}`} 
+                        className="flex items-center justify-center p-2 rounded-full hover:bg-gray-200 transition-colors"
+                      >
+                        <ArrowRight className="h-4 w-4 text-gray-400" />
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
+              <p className="text-gray-500">No recent annotations found</p>
+              <Link 
+                to="/annotate" 
+                className="inline-flex items-center mt-4 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md transition-colors"
+              >
+                Start Annotating
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 };
 
-export default UserDashboard; 
+export default UserDashboard;

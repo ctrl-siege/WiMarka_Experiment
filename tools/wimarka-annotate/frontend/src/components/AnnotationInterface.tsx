@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sentencesAPI, annotationsAPI } from '../services/api';
-import type { Sentence, AnnotationCreate, TextHighlight } from '../types';
+import type { Sentence, AnnotationCreate, AnnotationUpdate, TextHighlight } from '../types';
 import { ChevronRight, Check, AlertCircle, Clock, MessageCircle, Trash2, Plus, Highlighter, X } from 'lucide-react';
 
 interface TextSegment extends Omit<TextHighlight, 'id' | 'annotation_id' | 'created_at'> {
@@ -18,6 +18,10 @@ interface SentenceAnnotation {
   highlights: TextSegment[];
   isExpanded?: boolean;
   startTime?: Date;
+  annotation_id?: number; // For existing annotations
+  annotation_status?: 'in_progress' | 'completed' | 'reviewed';
+  created_at?: string;
+  updated_at?: string;
 }
 
 const AnnotationInterface: React.FC = () => {
@@ -30,7 +34,7 @@ const AnnotationInterface: React.FC = () => {
   const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
   const [selectedRange, setSelectedRange] = useState<{ start: number; end: number } | null>(null);
   const [tempComment, setTempComment] = useState('');
-  const [activeTextType, setActiveTextType] = useState<'machine' | 'reference'>('machine');
+  const [activeTextType, setActiveTextType] = useState<'machine'>('machine');
   const [activeSentenceId, setActiveSentenceId] = useState<number | null>(null);
   const [isGuidelinesModalClosing, setIsGuidelinesModalClosing] = useState(false);
   const [isCommentModalClosing, setIsCommentModalClosing] = useState(false);
@@ -42,14 +46,11 @@ const AnnotationInterface: React.FC = () => {
   
   const textRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  useEffect(() => {
-    loadSentences();
-  }, []);
-
   const loadSentences = async () => {
     setIsLoading(true);
     setMessage('');
     try {
+      // Load unannotated sentences for new annotations
       const loadedSentences = await sentencesAPI.getUnannotatedSentences(0, 50);
       setSentences(loadedSentences);
       
@@ -81,7 +82,11 @@ const AnnotationInterface: React.FC = () => {
     }
   };
 
-  const handleTextSelection = (sentenceId: number, textType: 'machine' | 'reference') => {
+  useEffect(() => {
+    loadSentences();
+  }, []);
+
+  const handleTextSelection = (sentenceId: number) => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) return;
 
@@ -90,7 +95,7 @@ const AnnotationInterface: React.FC = () => {
     
     if (selectedText.length === 0) return;
 
-    const refKey = `${sentenceId}-${textType}`;
+    const refKey = `${sentenceId}-machine`;
     const container = textRefs.current.get(refKey);
     if (!container || !container.contains(range.commonAncestorContainer)) return;
 
@@ -98,7 +103,7 @@ const AnnotationInterface: React.FC = () => {
     const sentence = sentences.find(s => s.id === sentenceId);
     if (!sentence) return;
     
-    const originalText = textType === 'machine' ? sentence.machine_translation : sentence.reference_translation;
+    const originalText = sentence.machine_translation;
     if (!originalText) return;
 
     // Find the start index by searching for the selected text in the original text
@@ -132,7 +137,7 @@ const AnnotationInterface: React.FC = () => {
       setSelectedRange({ start: startIndex, end: endIndex });
     }
 
-    setActiveTextType(textType);
+    setActiveTextType('machine');
     setActiveSentenceId(sentenceId);
     setShowCommentModal(true);
     
@@ -156,8 +161,17 @@ const AnnotationInterface: React.FC = () => {
       const updated = new Map(prev);
       const annotation = updated.get(activeSentenceId);
       if (annotation) {
-        annotation.highlights = [...annotation.highlights, newHighlight];
-        updated.set(activeSentenceId, annotation);
+        // Prevent duplicate highlights
+        const isDuplicate = annotation.highlights.some(h =>
+          h.start_index === newHighlight.start_index &&
+          h.end_index === newHighlight.end_index &&
+          h.text_type === newHighlight.text_type &&
+          h.comment === newHighlight.comment
+        );
+        if (!isDuplicate) {
+          annotation.highlights = [...annotation.highlights, newHighlight];
+          updated.set(activeSentenceId, annotation);
+        }
       }
       return updated;
     });
@@ -211,8 +225,9 @@ const AnnotationInterface: React.FC = () => {
     }, 200);
   };
 
-  const renderHighlightedText = (text: string, highlights: TextSegment[], textType: 'machine' | 'reference') => {
-    const relevantHighlights = highlights.filter(h => h.text_type === textType);
+  const renderHighlightedText = (text: string, highlights: TextSegment[]) => {
+    // Only show machine translation highlights
+    const relevantHighlights = highlights.filter(h => h.text_type === 'machine');
 
     if (relevantHighlights.length === 0) {
       return <span>{text}</span>;
@@ -341,20 +356,39 @@ const AnnotationInterface: React.FC = () => {
       comment: segment.comment,
     }));
 
-    const annotationData: AnnotationCreate = {
-      sentence_id: annotation.sentence_id,
-      fluency_score: annotation.fluency_score,
-      adequacy_score: annotation.adequacy_score,
-      overall_quality: annotation.overall_quality,
-      comments: annotation.comments,
-      final_form: annotation.final_form,
-      time_spent_seconds: timeSpent,
-      highlights: highlights,
-    };
-
     setSubmittingIds(prev => new Set(prev).add(sentenceId));
     try {
-      await annotationsAPI.createAnnotation(annotationData);
+      if (annotation.annotation_id) {
+        // Update existing annotation
+        const updateData: AnnotationUpdate = {
+          fluency_score: annotation.fluency_score,
+          adequacy_score: annotation.adequacy_score,
+          overall_quality: annotation.overall_quality,
+          comments: annotation.comments,
+          final_form: annotation.final_form,
+          time_spent_seconds: timeSpent,
+          annotation_status: 'completed',
+          highlights: highlights,
+        };
+        
+        await annotationsAPI.updateAnnotation(annotation.annotation_id, updateData);
+        setMessage('Annotation updated successfully!');
+      } else {
+        // Create new annotation
+        const annotationData: AnnotationCreate = {
+          sentence_id: annotation.sentence_id,
+          fluency_score: annotation.fluency_score,
+          adequacy_score: annotation.adequacy_score,
+          overall_quality: annotation.overall_quality,
+          comments: annotation.comments,
+          final_form: annotation.final_form,
+          time_spent_seconds: timeSpent,
+          highlights: highlights,
+        };
+
+        await annotationsAPI.createAnnotation(annotationData);
+        setMessage('Annotation saved successfully!');
+      }
       
       // Remove the sentence from the list after successful submission
       setSentences(prev => prev.filter(s => s.id !== sentenceId));
@@ -369,7 +403,6 @@ const AnnotationInterface: React.FC = () => {
         return updated;
       });
       
-      setMessage('Annotation saved successfully!');
       setTimeout(() => setMessage(''), 3000);
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : 'Error saving annotation. Please try again.');
@@ -384,6 +417,9 @@ const AnnotationInterface: React.FC = () => {
   };
 
   const toggleExpanded = (sentenceId: number) => {
+    const annotation = annotations.get(sentenceId);
+    if (!annotation) return;
+
     setExpandedSentences(prev => {
       const updated = new Set(prev);
       if (updated.has(sentenceId)) {
@@ -394,6 +430,8 @@ const AnnotationInterface: React.FC = () => {
       return updated;
     });
   };
+
+
 
   const RatingButtons: React.FC<{ 
     value: number | undefined; 
@@ -451,6 +489,7 @@ const AnnotationInterface: React.FC = () => {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Sentence Annotators</h1>
           <div className="flex items-center space-x-4"> 
+            
             <button
               onClick={() => setShowGuidelinesModal(true)}
               className="btn-secondary text-sm"
@@ -499,21 +538,14 @@ const AnnotationInterface: React.FC = () => {
                       #{sentence.id}
                     </div>
                     
-                    <div className="col-span-2">
-                      <div className="text-xs text-gray-500 mb-1">Source Text (ENG)</div>
+                    <div className="col-span-5">
+                      <div className="text-xs text-gray-500 mb-1">Source Text ({sentence.source_language.toUpperCase()})</div>
                       <div className="text-sm text-gray-900 truncate" title={sentence.source_text}>
                         {sentence.source_text}
                       </div>
                     </div>
                     
-                    <div className="col-span-2">
-                      <div className="text-xs text-gray-500 mb-1">Source Text (TGL)</div>
-                      <div className="text-sm text-gray-900 truncate" title={sentence.tagalog_source_text || "No Tagalog source text available"}>
-                        {sentence.tagalog_source_text || "[No TG source text]"}
-                      </div>
-                    </div>
-                    
-                    <div className="col-span-5">
+                    <div className="col-span-4">
                       <div className="text-xs text-gray-500 mb-1">Machine Translation ({sentence.target_language.toUpperCase()})</div>
                       <div className="text-sm text-gray-900 truncate" title={sentence.machine_translation}>
                         {sentence.machine_translation}
@@ -537,49 +569,14 @@ const AnnotationInterface: React.FC = () => {
                 {isExpanded && (
                   <div className="bg-white p-6 border-t border-gray-200">
                     {/* Full Text Display */}
-                    <div className="grid lg:grid-cols-2 gap-6 mb-6">
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Source Text (ENG)
-                          </label>
-                          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                            <p className="text-gray-900 leading-relaxed">{sentence.source_text}</p>
-                          </div>
+                    <div className="grid lg:grid-cols-1 gap-6 mb-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Source Text ({sentence.source_language.toUpperCase()})
+                        </label>
+                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                          <p className="text-gray-900 leading-relaxed">{sentence.source_text}</p>
                         </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Source Text (TGL)
-                          </label>
-                          <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-                            <p className="text-gray-900 leading-relaxed">{sentence.tagalog_source_text || "No Tagalog source text available"}</p>
-                          </div>
-                        </div>
-                        
-                        {sentence.reference_translation && (
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Reference Text ({sentence.target_language.toUpperCase()})
-                              <span className="ml-2 text-xs text-gray-500">- Click and drag to highlight</span>
-                            </label>
-                            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                              <div
-                                ref={(el) => {
-                                  if (el) textRefs.current.set(`${sentence.id}-reference`, el);
-                                }}
-                                className="text-gray-900 leading-relaxed cursor-text select-text"
-                                onMouseUp={() => handleTextSelection(sentence.id, 'reference')}
-                              >
-                                {renderHighlightedText(
-                                  sentence.reference_translation,
-                                  annotation.highlights,
-                                  'reference'
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )}
                       </div>
 
                       <div>
@@ -593,12 +590,11 @@ const AnnotationInterface: React.FC = () => {
                               if (el) textRefs.current.set(`${sentence.id}-machine`, el);
                             }}
                             className="text-gray-900 leading-relaxed cursor-text select-text"
-                            onMouseUp={() => handleTextSelection(sentence.id, 'machine')}
+                            onMouseUp={() => handleTextSelection(sentence.id)}
                           >
                             {renderHighlightedText(
                               sentence.machine_translation,
-                              annotation.highlights,
-                              'machine'
+                              annotation.highlights
                             )}
                           </div>
                         </div>
@@ -625,7 +621,7 @@ const AnnotationInterface: React.FC = () => {
                                     "{highlight.highlighted_text}"
                                   </span>
                                   <span className="text-xs text-gray-500">
-                                    ({highlight.text_type === 'machine' ? 'Machine Translation' : 'Reference Text'})
+                                    (Machine Translation)
                                   </span>
                                 </div>
                                 <p className="text-xs text-gray-600">{highlight.comment}</p>
@@ -749,7 +745,7 @@ const AnnotationInterface: React.FC = () => {
               <div>
                 <h4 className="text-lg font-semibold text-gray-800 mb-3">Overview</h4>
                 <p className="text-gray-600 mb-4">
-                  You will be evaluating machine-translated sentences by comparing them with reference text. 
+                  You will be evaluating machine-translated sentences by comparing them with the source text. 
                   Your task is to assess the quality of the translation and provide detailed feedback.
                 </p>
               </div>
@@ -825,10 +821,6 @@ const AnnotationInterface: React.FC = () => {
                     <div>
                       <span className="text-sm font-medium text-gray-700">Machine Translation:</span>
                       <p className="text-sm">"The doctor <span className="bg-blue-200 px-1 rounded">prescripted</span> medicine for the patient's <span className="bg-blue-200 px-1 rounded">state</span>."</p>
-                    </div>
-                    <div>
-                      <span className="text-sm font-medium text-gray-700">Reference:</span>
-                      <p className="text-sm">"The doctor prescribed medication for the patient's condition."</p>
                     </div>
                     <div className="text-sm text-gray-600">
                       <p><strong>Highlights & Comments:</strong></p>
@@ -939,8 +931,10 @@ const AnnotationInterface: React.FC = () => {
           </div>
         </div>
       )}
+
+
     </div>
   );
 };
 
-export default AnnotationInterface; 
+export default AnnotationInterface;

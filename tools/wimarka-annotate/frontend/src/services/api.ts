@@ -9,6 +9,10 @@ import type {
   AnnotationCreate,
   AnnotationUpdate,
   AdminStats,
+  Evaluation,
+  EvaluationCreate,
+  EvaluationUpdate,
+  EvaluatorStats,
 } from '../types';
 
 const API_BASE_URL = 'http://localhost:8000/api';
@@ -140,6 +144,67 @@ export const adminAPI = {
 
   getAllUsers: async (skip = 0, limit = 100): Promise<User[]> => {
     const response = await api.get(`/admin/users?skip=${skip}&limit=${limit}`);
+    return response.data;
+  },
+
+  getAdminSentences: async (skip = 0, limit = 100, targetLanguage?: string, sourceLanguage?: string): Promise<Sentence[]> => {
+    let url = `/admin/sentences?skip=${skip}&limit=${limit}`;
+    if (targetLanguage) url += `&target_language=${targetLanguage}`;
+    if (sourceLanguage) url += `&source_language=${sourceLanguage}`;
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  getSentenceCountsByLanguage: async (): Promise<{[key: string]: number}> => {
+    const response = await api.get('/admin/sentences/counts');
+    return response.data;
+  },
+
+  getSentenceAnnotations: async (sentenceId: number): Promise<Annotation[]> => {
+    const response = await api.get(`/admin/sentences/${sentenceId}/annotations`);
+    return response.data;
+  },
+
+  toggleEvaluatorRole: async (userId: number): Promise<User> => {
+    const response = await api.put(`/admin/users/${userId}/toggle-evaluator`);
+    return response.data;
+  },
+};
+
+// Evaluations API
+export const evaluationsAPI = {
+  createEvaluation: async (evaluationData: EvaluationCreate): Promise<Evaluation> => {
+    const response = await api.post('/evaluations', evaluationData);
+    return response.data;
+  },
+
+  updateEvaluation: async (id: number, evaluationData: EvaluationUpdate): Promise<Evaluation> => {
+    const response = await api.put(`/evaluations/${id}`, evaluationData);
+    return response.data;
+  },
+
+  getMyEvaluations: async (skip = 0, limit = 100): Promise<Evaluation[]> => {
+    const response = await api.get(`/evaluations?skip=${skip}&limit=${limit}`);
+    return response.data;
+  },
+
+  getPendingEvaluations: async (skip = 0, limit = 50): Promise<Annotation[]> => {
+    const response = await api.get(`/evaluations/pending?skip=${skip}&limit=${limit}`);
+    return response.data;
+  },
+
+  getEvaluatorStats: async (): Promise<EvaluatorStats> => {
+    const response = await api.get('/evaluator/stats');
+    return response.data;
+  },
+
+  getAllEvaluations: async (skip = 0, limit = 100): Promise<Evaluation[]> => {
+    const response = await api.get(`/admin/evaluations?skip=${skip}&limit=${limit}`);
+    return response.data;
+  },
+
+  getAnnotationEvaluations: async (annotationId: number): Promise<Evaluation[]> => {
+    const response = await api.get(`/annotations/${annotationId}/evaluations`);
     return response.data;
   },
 };

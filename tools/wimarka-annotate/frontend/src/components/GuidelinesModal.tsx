@@ -71,7 +71,7 @@ const GuidelinesModal: React.FC<GuidelinesModalProps> = ({ isOpen, onClose, onAc
             <section>
               <h4 className="text-lg font-semibold text-gray-800 mb-3">Overview</h4>
               <p className="text-gray-600 mb-4">
-                You will be evaluating machine-translated sentences by comparing them with reference text. 
+                You will be evaluating machine-translated sentences by analyzing the quality of the translation compared to the source text. 
                 Your task is to assess the quality of the translation and provide detailed feedback.
               </p>
             </section>
