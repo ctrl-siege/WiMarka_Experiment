@@ -201,16 +201,24 @@ const EvaluationInterface: React.FC = () => {
           default: return 'bg-gray-200 border-b-2 border-gray-400';
         }
       };
+
+      const getErrorTypeLabel = (type: string) => {
+        switch (type) {
+          case 'MI_ST': return 'Minor Syntactic';
+          case 'MI_SE': return 'Minor Semantic';
+          case 'MA_ST': return 'Major Syntactic';
+          case 'MA_SE': return 'Major Semantic';
+          default: return 'Unknown Type';
+        }
+      };
       
       elements.push(
         <span
           key={`highlight-${index}`}
           className={`${getErrorTypeStyle(errorType)} px-1 rounded relative group cursor-help`}
-          title={`[${errorType}] ${highlight.comment}`}
+          title={`${getErrorTypeLabel(errorType)}: ${highlight.comment}`}
         >
-          <span className="text-xs font-bold text-gray-600">[{errorType}]</span>
           <span className="mx-1">{highlight.highlighted_text}</span>
-          <span className="text-xs font-bold text-gray-600">[/{errorType}]</span>
         </span>
       );
 

@@ -377,13 +377,11 @@ const AnnotationInterface: React.FC = () => {
           className={`${errorTypeClass} px-1 rounded cursor-pointer relative group`}
           title={`${errorTypeLabel}: ${highlight.comment}`}
         >
-          <span className="text-xs font-bold text-gray-600">[{highlight.error_type || 'MI_SE'}]</span>
           <span className="mx-1">{highlightedText}</span>
-          <span className="text-xs font-bold text-gray-600">[/{highlight.error_type || 'MI_SE'}]</span>
           <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10">
             <div className="bg-gray-800 text-white text-xs rounded py-1 px-2 whitespace-nowrap max-w-xs">
               <div className="font-medium text-yellow-300 mb-1">
-                [{highlight.error_type || 'MI_SE'}] {errorTypeLabel}
+                {errorTypeLabel}
               </div>
               {highlight.comment}
             </div>
@@ -833,7 +831,7 @@ const AnnotationInterface: React.FC = () => {
                                       "{highlight.highlighted_text}"
                                     </span>
                                     <span className={`text-xs px-2 py-0.5 rounded-full text-white ${colors.badge}`}>
-                                      [{highlight.error_type || 'MI_SE'}] {errorTypeLabel}
+                                      {errorTypeLabel}
                                     </span>
                                   </div>
                                   <p className="text-xs text-gray-600">{highlight.comment}</p>
@@ -1080,7 +1078,7 @@ const AnnotationInterface: React.FC = () => {
                           : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                       }`}
                     >
-                      [MI_ST] Syntactic
+                      Minor Syntactic
                     </button>
                     <button
                       type="button"
@@ -1091,7 +1089,7 @@ const AnnotationInterface: React.FC = () => {
                           : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                       }`}
                     >
-                      [MI_SE] Semantic
+                      Minor Semantic
                     </button>
                   </div>
                 </div>
@@ -1107,7 +1105,7 @@ const AnnotationInterface: React.FC = () => {
                           : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                       }`}
                     >
-                      [MA_ST] Syntactic
+                      Major Syntactic
                     </button>
                     <button
                       type="button"
@@ -1118,7 +1116,7 @@ const AnnotationInterface: React.FC = () => {
                           : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                       }`}
                     >
-                      [MA_SE] Semantic
+                      Major Semantic
                     </button>
                   </div>
                 </div>

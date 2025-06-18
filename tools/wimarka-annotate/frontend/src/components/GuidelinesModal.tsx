@@ -91,7 +91,7 @@ const GuidelinesModal: React.FC<GuidelinesModalProps> = ({ isOpen, onClose, onAc
                       <div className="bg-orange-50 p-3 rounded-lg border border-orange-200">
                         <div className="flex items-center space-x-2 mb-1">
                           <div className="w-3 h-3 bg-orange-400 rounded"></div>
-                          <span className="text-sm font-medium text-orange-900">[MI_ST] Minor Syntactic</span>
+                          <span className="text-sm font-medium text-orange-900">Minor Syntactic</span>
                         </div>
                         <p className="text-xs text-orange-800">
                           Small grammar, word order, or inflection errors that don't affect overall understanding
@@ -101,7 +101,7 @@ const GuidelinesModal: React.FC<GuidelinesModalProps> = ({ isOpen, onClose, onAc
                       <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
                         <div className="flex items-center space-x-2 mb-1">
                           <div className="w-3 h-3 bg-blue-400 rounded"></div>
-                          <span className="text-sm font-medium text-blue-900">[MI_SE] Minor Semantic</span>
+                          <span className="text-sm font-medium text-blue-900">Minor Semantic</span>
                         </div>
                         <p className="text-xs text-blue-800">
                           Small meaning, context, or word choice errors that don't significantly impact comprehension
@@ -116,7 +116,7 @@ const GuidelinesModal: React.FC<GuidelinesModalProps> = ({ isOpen, onClose, onAc
                       <div className="bg-red-50 p-3 rounded-lg border border-red-200">
                         <div className="flex items-center space-x-2 mb-1">
                           <div className="w-3 h-3 bg-red-500 rounded"></div>
-                          <span className="text-sm font-medium text-red-900">[MA_ST] Major Syntactic</span>
+                          <span className="text-sm font-medium text-red-900">Major Syntactic</span>
                         </div>
                         <p className="text-xs text-red-800">
                           Significant grammar or structural errors that affect readability and understanding
@@ -126,7 +126,7 @@ const GuidelinesModal: React.FC<GuidelinesModalProps> = ({ isOpen, onClose, onAc
                       <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
                         <div className="flex items-center space-x-2 mb-1">
                           <div className="w-3 h-3 bg-purple-500 rounded"></div>
-                          <span className="text-sm font-medium text-purple-900">[MA_SE] Major Semantic</span>
+                          <span className="text-sm font-medium text-purple-900">Major Semantic</span>
                         </div>
                         <p className="text-xs text-purple-800">
                           Serious meaning or context errors that significantly impact comprehension
@@ -289,7 +289,7 @@ const GuidelinesModal: React.FC<GuidelinesModalProps> = ({ isOpen, onClose, onAc
                       <div className="flex items-start space-x-2">
                         <div className="w-2 h-2 bg-blue-400 rounded-full mt-1.5"></div>
                         <div>
-                          <span className="text-xs font-medium text-blue-800">[MI_SE]</span>
+                          <span className="text-xs font-medium text-blue-800">Minor Semantic</span>
                           <span className="text-sm text-gray-700 ml-1">"nagsumite ng kanyang takdang-aralin"</span>
                           <p className="text-xs text-gray-600">More natural Tagalog: "ipinasa ang kanyang gawain"</p>
                         </div>
@@ -297,7 +297,7 @@ const GuidelinesModal: React.FC<GuidelinesModalProps> = ({ isOpen, onClose, onAc
                       <div className="flex items-start space-x-2">
                         <div className="w-2 h-2 bg-purple-500 rounded-full mt-1.5"></div>
                         <div>
-                          <span className="text-xs font-medium text-purple-800">[MA_SE]</span>
+                          <span className="text-xs font-medium text-purple-800">Major Semantic</span>
                           <span className="text-sm text-gray-700 ml-1">"deadline"</span>
                           <p className="text-xs text-gray-600">Should use proper Tagalog term: "takdang oras"</p>
                         </div>

@@ -322,19 +322,27 @@ const MyAnnotations: React.FC = () => {
           default: return 'bg-gray-200 border-b-2 border-gray-400';
         }
       };
+
+      const getErrorTypeLabel = (type: string) => {
+        switch (type) {
+          case 'MI_ST': return 'Minor Syntactic';
+          case 'MI_SE': return 'Minor Semantic';
+          case 'MA_ST': return 'Major Syntactic';
+          case 'MA_SE': return 'Major Semantic';
+          default: return 'Unknown Type';
+        }
+      };
       
       parts.push(
         <span
           key={`highlight-${highlight.id || index}`}
           className={`${getErrorTypeStyle(errorType)} px-1 rounded cursor-pointer relative group`}
-          title={`[${errorType}] ${highlight.comment}`}
+          title={`${getErrorTypeLabel(errorType)}: ${highlight.comment}`}
         >
-          <span className="text-xs font-bold text-gray-600">[{errorType}]</span>
           <span className="mx-1">{highlightedText}</span>
-          <span className="text-xs font-bold text-gray-600">[/{errorType}]</span>
           <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10">
             <div className="bg-gray-800 text-white text-xs rounded py-1 px-2 whitespace-nowrap max-w-xs">
-              <div className="font-bold">[{errorType}]</div>
+              <div className="font-bold">{getErrorTypeLabel(errorType)}</div>
               <div>{highlight.comment}</div>
             </div>
           </div>
@@ -913,8 +921,7 @@ const MyAnnotations: React.FC = () => {
                         : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
                     }`}
                   >
-                    <div className="font-bold">[{option.value}]</div>
-                    <div className="text-xs">{option.label}</div>
+                    <div className="font-bold">{option.label}</div>
                   </button>
                 ))}
               </div>
