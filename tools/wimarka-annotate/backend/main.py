@@ -5,7 +5,9 @@ from datetime import timedelta
 from typing import List, Optional
 import json
 
-from database import get_db, create_tables, User, Sentence, Annotation, TextHighlight, UserLanguage, Evaluation
+from evaluator import DistilBERTMTEvaluator, evaluate_mt_quality
+
+from database import get_db, create_tables, User, Sentence, Annotation, TextHighlight, UserLanguage, Evaluation, MTQualityAssessment
 from auth import (
     authenticate_user, 
     create_access_token, 
@@ -35,7 +37,13 @@ from schemas import (
     EvaluationResponse,
     AdminStats,
     UserStats,
-    EvaluatorStats
+    EvaluatorStats,
+    MTQualityAssessmentCreate,
+    MTQualityAssessmentUpdate,
+    MTQualityAssessmentResponse,
+    MTEvaluatorStats,
+    SyntaxErrorSchema,
+    SemanticErrorSchema
 )
 
 app = FastAPI(title="WiMarka - Annotation Tool", version="1.0.0")
@@ -465,6 +473,33 @@ def get_my_annotations(
         response_annotations.append(annotation_dict)
     
     return response_annotations
+
+@app.delete("/api/annotations/{annotation_id}")
+def delete_annotation(
+    annotation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Find the annotation
+    annotation = db.query(Annotation).filter(
+        Annotation.id == annotation_id,
+        Annotation.annotator_id == current_user.id
+    ).first()
+    
+    if not annotation:
+        raise HTTPException(status_code=404, detail="Annotation not found")
+    
+    # Delete associated highlights first (cascade should handle this, but being explicit)
+    db.query(TextHighlight).filter(TextHighlight.annotation_id == annotation_id).delete()
+    
+    # Delete any evaluations associated with this annotation
+    db.query(Evaluation).filter(Evaluation.annotation_id == annotation_id).delete()
+    
+    # Delete the annotation
+    db.delete(annotation)
+    db.commit()
+    
+    return {"message": "Annotation deleted successfully"}
 
 # Admin endpoints
 @app.get("/api/admin/stats", response_model=AdminStats)
@@ -928,58 +963,450 @@ def get_evaluator_stats(
         average_time_per_evaluation=average_time
     )
 
-# Admin evaluation endpoints
-@app.get("/api/admin/evaluations", response_model=List[EvaluationResponse])
-def get_all_evaluations(
+# Machine Translation Quality Assessment Endpoints
+
+@app.get("/api/mt-quality/pending", response_model=List[SentenceResponse])
+def get_pending_mt_assessments(
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_evaluator_user)
+):
+    """Get sentences pending MT quality assessment"""
+    # Get sentences that haven't been assessed yet by this evaluator
+    assessed_sentence_ids = db.query(MTQualityAssessment.sentence_id).filter(
+        MTQualityAssessment.evaluator_id == current_user.id
+    ).subquery()
+    
+    sentences = db.query(Sentence).filter(
+        Sentence.is_active == True,
+        ~Sentence.id.in_(assessed_sentence_ids)
+    ).offset(skip).limit(limit).all()
+    
+    return [SentenceResponse.from_orm(sentence) for sentence in sentences]
+
+@app.post("/api/mt-quality/assess", response_model=MTQualityAssessmentResponse)
+def create_mt_quality_assessment(
+    assessment_data: MTQualityAssessmentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_evaluator_user)
+):
+    """Create MT quality assessment using DistilBERT analysis"""
+    # Get the sentence
+    sentence = db.query(Sentence).filter(Sentence.id == assessment_data.sentence_id).first()
+    if not sentence:
+        raise HTTPException(status_code=404, detail="Sentence not found")
+    
+    # Check if already assessed by this evaluator
+    existing_assessment = db.query(MTQualityAssessment).filter(
+        MTQualityAssessment.sentence_id == assessment_data.sentence_id,
+        MTQualityAssessment.evaluator_id == current_user.id
+    ).first()
+    
+    if existing_assessment:
+        raise HTTPException(status_code=400, detail="Sentence already assessed by this evaluator")
+    
+    # Run DistilBERT evaluation
+    mt_result = evaluate_mt_quality(
+        sentence.source_text,
+        sentence.machine_translation, 
+        sentence.source_language,
+        sentence.target_language
+    )
+    
+    # Create assessment record
+    db_assessment = MTQualityAssessment(
+        sentence_id=assessment_data.sentence_id,
+        evaluator_id=current_user.id,
+        fluency_score=assessment_data.fluency_score or mt_result.fluency_score,
+        adequacy_score=assessment_data.adequacy_score or mt_result.adequacy_score,
+        overall_quality_score=assessment_data.overall_quality_score or mt_result.overall_quality,
+        syntax_errors=json.dumps([{
+            'error_type': error.error_type,
+            'severity': error.severity,
+            'start_position': error.start_position,
+            'end_position': error.end_position,
+            'text_span': error.text_span,
+            'description': error.description,
+            'suggested_fix': error.suggested_fix
+        } for error in mt_result.syntax_errors]),
+        semantic_errors=json.dumps([{
+            'error_type': error.error_type,
+            'severity': error.severity,
+            'start_position': error.start_position,
+            'end_position': error.end_position,
+            'text_span': error.text_span,
+            'description': error.description,
+            'suggested_fix': error.suggested_fix
+        } for error in mt_result.semantic_errors]),
+        quality_explanation=mt_result.quality_explanation,
+        correction_suggestions=json.dumps(mt_result.correction_suggestions),
+        model_confidence=mt_result.model_confidence,
+        processing_time_ms=mt_result.processing_time_ms,
+        time_spent_seconds=assessment_data.time_spent_seconds,
+        human_feedback=assessment_data.human_feedback,
+        correction_notes=assessment_data.correction_notes,
+        evaluation_status="completed"
+    )
+    
+    db.add(db_assessment)
+    db.commit()
+    db.refresh(db_assessment)
+    
+    # Convert to response format
+    return MTQualityAssessmentResponse(
+        id=db_assessment.id,
+        sentence_id=db_assessment.sentence_id,
+        evaluator_id=db_assessment.evaluator_id,
+        fluency_score=db_assessment.fluency_score,
+        adequacy_score=db_assessment.adequacy_score,
+        overall_quality_score=db_assessment.overall_quality_score,
+        syntax_errors=json.loads(db_assessment.syntax_errors),
+        semantic_errors=json.loads(db_assessment.semantic_errors),
+        quality_explanation=db_assessment.quality_explanation,
+        correction_suggestions=json.loads(db_assessment.correction_suggestions),
+        model_confidence=db_assessment.model_confidence,
+        processing_time_ms=db_assessment.processing_time_ms,
+        time_spent_seconds=db_assessment.time_spent_seconds,
+        human_feedback=db_assessment.human_feedback,
+        correction_notes=db_assessment.correction_notes,
+        evaluation_status=db_assessment.evaluation_status,
+        created_at=db_assessment.created_at,
+        updated_at=db_assessment.updated_at,
+        sentence=SentenceResponse.from_orm(db_assessment.sentence),
+        evaluator=UserResponse.from_orm(db_assessment.evaluator)
+    )
+
+@app.put("/api/mt-quality/{assessment_id}", response_model=MTQualityAssessmentResponse)
+def update_mt_quality_assessment(
+    assessment_id: int,
+    update_data: MTQualityAssessmentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_evaluator_user)
+):
+    """Update MT quality assessment with human feedback"""
+    assessment = db.query(MTQualityAssessment).filter(
+        MTQualityAssessment.id == assessment_id,
+        MTQualityAssessment.evaluator_id == current_user.id
+    ).first()
+    
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    
+    # Update fields
+    if update_data.fluency_score is not None:
+        assessment.fluency_score = update_data.fluency_score
+    if update_data.adequacy_score is not None:
+        assessment.adequacy_score = update_data.adequacy_score
+    if update_data.overall_quality_score is not None:
+        assessment.overall_quality_score = update_data.overall_quality_score
+    if update_data.human_feedback is not None:
+        assessment.human_feedback = update_data.human_feedback
+    if update_data.correction_notes is not None:
+        assessment.correction_notes = update_data.correction_notes
+    if update_data.time_spent_seconds is not None:
+        assessment.time_spent_seconds = update_data.time_spent_seconds
+    if update_data.evaluation_status is not None:
+        assessment.evaluation_status = update_data.evaluation_status
+    
+    db.commit()
+    db.refresh(assessment)
+    
+    return MTQualityAssessmentResponse(
+        id=assessment.id,
+        sentence_id=assessment.sentence_id,
+        evaluator_id=assessment.evaluator_id,
+        fluency_score=assessment.fluency_score,
+        adequacy_score=assessment.adequacy_score,
+        overall_quality_score=assessment.overall_quality_score,
+        syntax_errors=json.loads(assessment.syntax_errors),
+        semantic_errors=json.loads(assessment.semantic_errors),
+        quality_explanation=assessment.quality_explanation,
+        correction_suggestions=json.loads(assessment.correction_suggestions),
+        model_confidence=assessment.model_confidence,
+        processing_time_ms=assessment.processing_time_ms,
+        time_spent_seconds=assessment.time_spent_seconds,
+        human_feedback=assessment.human_feedback,
+        correction_notes=assessment.correction_notes,
+        evaluation_status=assessment.evaluation_status,
+        created_at=assessment.created_at,
+        updated_at=assessment.updated_at,
+        sentence=SentenceResponse.from_orm(assessment.sentence),
+        evaluator=UserResponse.from_orm(assessment.evaluator)
+    )
+
+@app.get("/api/mt-quality/my-assessments", response_model=List[MTQualityAssessmentResponse])
+def get_my_mt_assessments(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_evaluator_user)
+):
+    """Get evaluator's MT quality assessments"""
+    assessments = db.query(MTQualityAssessment).filter(
+        MTQualityAssessment.evaluator_id == current_user.id
+    ).offset(skip).limit(limit).all()
+    
+    return [MTQualityAssessmentResponse(
+        id=assessment.id,
+        sentence_id=assessment.sentence_id,
+        evaluator_id=assessment.evaluator_id,
+        fluency_score=assessment.fluency_score,
+        adequacy_score=assessment.adequacy_score,
+        overall_quality_score=assessment.overall_quality_score,
+        syntax_errors=json.loads(assessment.syntax_errors),
+        semantic_errors=json.loads(assessment.semantic_errors),
+        quality_explanation=assessment.quality_explanation,
+        correction_suggestions=json.loads(assessment.correction_suggestions),
+        model_confidence=assessment.model_confidence,
+        processing_time_ms=assessment.processing_time_ms,
+        time_spent_seconds=assessment.time_spent_seconds,
+        human_feedback=assessment.human_feedback,
+        correction_notes=assessment.correction_notes,
+        evaluation_status=assessment.evaluation_status,
+        created_at=assessment.created_at,
+        updated_at=assessment.updated_at,
+        sentence=SentenceResponse.from_orm(assessment.sentence),
+        evaluator=UserResponse.from_orm(assessment.evaluator)
+    ) for assessment in assessments]
+
+@app.get("/api/mt-quality/stats", response_model=MTEvaluatorStats)
+def get_mt_evaluator_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_evaluator_user)
+):
+    """Get MT evaluator statistics"""
+    total_assessments = db.query(MTQualityAssessment).filter(
+        MTQualityAssessment.evaluator_id == current_user.id
+    ).count()
+    
+    completed_assessments = db.query(MTQualityAssessment).filter(
+        MTQualityAssessment.evaluator_id == current_user.id,
+        MTQualityAssessment.evaluation_status == "completed"
+    ).count()
+    
+    pending_assessments = db.query(Sentence).filter(
+        Sentence.is_active == True,
+        ~Sentence.id.in_(
+            db.query(MTQualityAssessment.sentence_id).filter(
+                MTQualityAssessment.evaluator_id == current_user.id
+            )
+        )
+    ).count()
+    
+    # Calculate averages
+    assessments = db.query(MTQualityAssessment).filter(
+        MTQualityAssessment.evaluator_id == current_user.id,
+        MTQualityAssessment.evaluation_status == "completed"
+    ).all()
+    
+    if assessments:
+        avg_fluency = sum(a.fluency_score for a in assessments) / len(assessments)
+        avg_adequacy = sum(a.adequacy_score for a in assessments) / len(assessments)
+        avg_overall = sum(a.overall_quality_score for a in assessments) / len(assessments)
+        avg_confidence = sum(a.model_confidence for a in assessments) / len(assessments)
+        
+        # Calculate error statistics
+        total_syntax_errors = sum(len(json.loads(a.syntax_errors)) for a in assessments)
+        total_semantic_errors = sum(len(json.loads(a.semantic_errors)) for a in assessments)
+        
+        # Calculate time statistics
+        assessments_with_time = [a for a in assessments if a.time_spent_seconds]
+        avg_time = sum(a.time_spent_seconds for a in assessments_with_time) / len(assessments_with_time) if assessments_with_time else 0
+        
+        # Human agreement rate (simplified - percentage of assessments where human didn't override AI scores)
+        human_overrides = sum(1 for a in assessments if a.human_feedback or a.correction_notes)
+        agreement_rate = 1.0 - (human_overrides / len(assessments)) if assessments else 1.0
+    else:
+        avg_fluency = avg_adequacy = avg_overall = avg_confidence = 0.0
+        total_syntax_errors = total_semantic_errors = 0
+        avg_time = 0.0
+        agreement_rate = 1.0
+    
+    return MTEvaluatorStats(
+        total_assessments=total_assessments,
+        completed_assessments=completed_assessments,
+        pending_assessments=pending_assessments,
+        average_time_per_assessment=avg_time,
+        average_fluency_score=avg_fluency,
+        average_adequacy_score=avg_adequacy,
+        average_overall_score=avg_overall,
+        total_syntax_errors_found=total_syntax_errors,
+        total_semantic_errors_found=total_semantic_errors,
+        average_model_confidence=avg_confidence,
+        human_agreement_rate=agreement_rate
+    )
+
+@app.get("/api/mt-quality/sentence/{sentence_id}", response_model=Optional[MTQualityAssessmentResponse])
+def get_mt_assessment_by_sentence(
+    sentence_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_evaluator_user)
+):
+    """Get MT quality assessment for a specific sentence"""
+    assessment = db.query(MTQualityAssessment).filter(
+        MTQualityAssessment.sentence_id == sentence_id,
+        MTQualityAssessment.evaluator_id == current_user.id
+    ).first()
+    
+    if not assessment:
+        return None
+    
+    return MTQualityAssessmentResponse(
+        id=assessment.id,
+        sentence_id=assessment.sentence_id,
+        evaluator_id=assessment.evaluator_id,
+        fluency_score=assessment.fluency_score,
+        adequacy_score=assessment.adequacy_score,
+        overall_quality_score=assessment.overall_quality_score,
+        syntax_errors=json.loads(assessment.syntax_errors),
+        semantic_errors=json.loads(assessment.semantic_errors),
+        quality_explanation=assessment.quality_explanation,
+        correction_suggestions=json.loads(assessment.correction_suggestions),
+        model_confidence=assessment.model_confidence,
+        processing_time_ms=assessment.processing_time_ms,
+        time_spent_seconds=assessment.time_spent_seconds,
+        human_feedback=assessment.human_feedback,
+        correction_notes=assessment.correction_notes,
+        evaluation_status=assessment.evaluation_status,
+        created_at=assessment.created_at,
+        updated_at=assessment.updated_at,
+        sentence=SentenceResponse.from_orm(assessment.sentence),
+        evaluator=UserResponse.from_orm(assessment.evaluator)
+    )
+
+@app.post("/api/mt-quality/batch-assess", response_model=List[MTQualityAssessmentResponse])
+def batch_assess_mt_quality(
+    sentence_ids: List[int],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_evaluator_user)
+):
+    """Batch process sentences for MT quality assessment"""
+    if len(sentence_ids) > 10:  # Limit batch size
+        raise HTTPException(status_code=400, detail="Batch size limited to 10 sentences")
+    
+    assessments = []
+    
+    for sentence_id in sentence_ids:
+        # Check if already assessed
+        existing = db.query(MTQualityAssessment).filter(
+            MTQualityAssessment.sentence_id == sentence_id,
+            MTQualityAssessment.evaluator_id == current_user.id
+        ).first()
+        
+        if existing:
+            continue  # Skip already assessed
+        
+        # Get sentence
+        sentence = db.query(Sentence).filter(Sentence.id == sentence_id).first()
+        if not sentence:
+            continue  # Skip missing sentences
+        
+        # Run DistilBERT evaluation
+        mt_result = evaluate_mt_quality(
+            sentence.source_text,
+            sentence.machine_translation,
+            sentence.source_language,
+            sentence.target_language
+        )
+        
+        # Create assessment
+        db_assessment = MTQualityAssessment(
+            sentence_id=sentence_id,
+            evaluator_id=current_user.id,
+            fluency_score=mt_result.fluency_score,
+            adequacy_score=mt_result.adequacy_score,
+            overall_quality_score=mt_result.overall_quality,
+            syntax_errors=json.dumps([{
+                'error_type': error.error_type,
+                'severity': error.severity,
+                'start_position': error.start_position,
+                'end_position': error.end_position,
+                'text_span': error.text_span,
+                'description': error.description,
+                'suggested_fix': error.suggested_fix
+            } for error in mt_result.syntax_errors]),
+            semantic_errors=json.dumps([{
+                'error_type': error.error_type,
+                'severity': error.severity,
+                'start_position': error.start_position,
+                'end_position': error.end_position,
+                'text_span': error.text_span,
+                'description': error.description,
+                'suggested_fix': error.suggested_fix
+            } for error in mt_result.semantic_errors]),
+            quality_explanation=mt_result.quality_explanation,
+            correction_suggestions=json.dumps(mt_result.correction_suggestions),
+            model_confidence=mt_result.model_confidence,
+            processing_time_ms=mt_result.processing_time_ms,
+            evaluation_status="completed"
+        )
+        
+        db.add(db_assessment)
+        assessments.append(db_assessment)
+    
+    db.commit()
+    
+    # Refresh and return
+    for assessment in assessments:
+        db.refresh(assessment)
+    
+    return [MTQualityAssessmentResponse(
+        id=assessment.id,
+        sentence_id=assessment.sentence_id,
+        evaluator_id=assessment.evaluator_id,
+        fluency_score=assessment.fluency_score,
+        adequacy_score=assessment.adequacy_score,
+        overall_quality_score=assessment.overall_quality_score,
+        syntax_errors=json.loads(assessment.syntax_errors),
+        semantic_errors=json.loads(assessment.semantic_errors),
+        quality_explanation=assessment.quality_explanation,
+        correction_suggestions=json.loads(assessment.correction_suggestions),
+        model_confidence=assessment.model_confidence,
+        processing_time_ms=assessment.processing_time_ms,
+        time_spent_seconds=assessment.time_spent_seconds,
+        human_feedback=assessment.human_feedback,
+        correction_notes=assessment.correction_notes,
+        evaluation_status=assessment.evaluation_status,
+        created_at=assessment.created_at,
+        updated_at=assessment.updated_at,
+        sentence=SentenceResponse.from_orm(assessment.sentence),
+        evaluator=UserResponse.from_orm(assessment.evaluator)
+    ) for assessment in assessments]
+
+# Admin MT Quality endpoints
+@app.get("/api/admin/mt-quality", response_model=List[MTQualityAssessmentResponse])
+def get_all_mt_assessments(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user)
 ):
-    evaluations = db.query(Evaluation).offset(skip).limit(limit).all()
+    """Get all MT quality assessments (admin only)"""
+    assessments = db.query(MTQualityAssessment).offset(skip).limit(limit).all()
     
-    # Convert to proper response format to handle language serialization
-    response_evaluations = []
-    for evaluation in evaluations:
-        # Create evaluation dict with properly converted nested objects
-        evaluation_dict = {
-            "id": evaluation.id,
-            "annotation_id": evaluation.annotation_id,
-            "evaluator_id": evaluation.evaluator_id,
-            "annotation_quality_score": evaluation.annotation_quality_score,
-            "accuracy_score": evaluation.accuracy_score,
-            "completeness_score": evaluation.completeness_score,
-            "overall_evaluation_score": evaluation.overall_evaluation_score,
-            "feedback": evaluation.feedback,
-            "evaluation_notes": evaluation.evaluation_notes,
-            "time_spent_seconds": evaluation.time_spent_seconds,
-            "evaluation_status": evaluation.evaluation_status,
-            "created_at": evaluation.created_at,
-            "updated_at": evaluation.updated_at,
-            "evaluator": UserResponse.from_orm(evaluation.evaluator),
-            "annotation": {
-                "id": evaluation.annotation.id,
-                "sentence_id": evaluation.annotation.sentence_id,
-                "annotator_id": evaluation.annotation.annotator_id,
-                "annotation_status": evaluation.annotation.annotation_status,
-                "created_at": evaluation.annotation.created_at,
-                "updated_at": evaluation.annotation.updated_at,
-                "fluency_score": evaluation.annotation.fluency_score,
-                "adequacy_score": evaluation.annotation.adequacy_score,
-                "overall_quality": evaluation.annotation.overall_quality,
-                "errors_found": evaluation.annotation.errors_found,
-                "suggested_correction": evaluation.annotation.suggested_correction,
-                "comments": evaluation.annotation.comments,
-                "final_form": evaluation.annotation.final_form,
-                "time_spent_seconds": evaluation.annotation.time_spent_seconds,
-                "sentence": evaluation.annotation.sentence,
-                "annotator": UserResponse.from_orm(evaluation.annotation.annotator),
-                "highlights": evaluation.annotation.highlights or []
-            }
-        }
-        response_evaluations.append(evaluation_dict)
-    
-    return response_evaluations
+    return [MTQualityAssessmentResponse(
+        id=assessment.id,
+        sentence_id=assessment.sentence_id,
+        evaluator_id=assessment.evaluator_id,
+        fluency_score=assessment.fluency_score,
+        adequacy_score=assessment.adequacy_score,
+        overall_quality_score=assessment.overall_quality_score,
+        syntax_errors=json.loads(assessment.syntax_errors),
+        semantic_errors=json.loads(assessment.semantic_errors),
+        quality_explanation=assessment.quality_explanation,
+        correction_suggestions=json.loads(assessment.correction_suggestions),
+        model_confidence=assessment.model_confidence,
+        processing_time_ms=assessment.processing_time_ms,
+        time_spent_seconds=assessment.time_spent_seconds,
+        human_feedback=assessment.human_feedback,
+        correction_notes=assessment.correction_notes,
+        evaluation_status=assessment.evaluation_status,
+        created_at=assessment.created_at,
+        updated_at=assessment.updated_at,
+        sentence=SentenceResponse.from_orm(assessment.sentence),
+        evaluator=UserResponse.from_orm(assessment.evaluator)
+    ) for assessment in assessments]
 
 @app.get("/api/annotations/{annotation_id}/evaluations", response_model=List[EvaluationResponse])
 def get_annotation_evaluations(

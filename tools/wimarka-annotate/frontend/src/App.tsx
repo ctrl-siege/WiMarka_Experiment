@@ -9,10 +9,12 @@ import MyAnnotations from './components/MyAnnotations';
 import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 import Profile from './components/Profile';
+import About from './components/About';
 import GuidelinesModal from './components/GuidelinesModal';
 import EvaluatorDashboard from './components/EvaluatorDashboard';
 import EvaluationInterface from './components/EvaluationInterface';
 import MyEvaluations from './components/MyEvaluations';
+import MTQualityInterface from './components/MTQualityInterface';
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ 
@@ -190,6 +192,14 @@ const AppContent: React.FC = () => {
             } 
           />
           <Route 
+            path="/annotate/:sentenceId" 
+            element={
+              <ProtectedRoute userOnly>
+                <AnnotationInterface />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
             path="/my-annotations" 
             element={
               <ProtectedRoute userOnly>
@@ -210,9 +220,16 @@ const AppContent: React.FC = () => {
             path="/profile" 
             element={
               <ProtectedRoute>
-                <Layout onShowGuidelines={() => setShowGuidelines(true)}>
-                  <Profile />
-                </Layout>
+                <Profile />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="/about" 
+            element={
+              <ProtectedRoute>
+                <About />
               </ProtectedRoute>
             } 
           />
@@ -236,6 +253,32 @@ const AppContent: React.FC = () => {
           />
           <Route 
             path="/my-evaluations" 
+            element={
+              <ProtectedRoute evaluatorOnly>
+                <MyEvaluations />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* MT Quality Assessment Routes */}
+          <Route 
+            path="/mt-assess" 
+            element={
+              <ProtectedRoute evaluatorOnly>
+                <MTQualityInterface />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/mt-assess/:sentenceId" 
+            element={
+              <ProtectedRoute evaluatorOnly>
+                <MTQualityInterface />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/my-assessments" 
             element={
               <ProtectedRoute evaluatorOnly>
                 <MyEvaluations />

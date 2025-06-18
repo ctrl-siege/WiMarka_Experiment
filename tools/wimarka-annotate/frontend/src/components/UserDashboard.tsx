@@ -456,9 +456,13 @@ const UserDashboard: React.FC = () => {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden divide-y divide-gray-200">
               {getRecentAnnotations().map((annotation) => {
                 return (
-                  <div key={annotation.id} className="p-5 hover:bg-gray-50 transition-colors">
+                  <Link 
+                    key={annotation.id} 
+                    to={`/annotate/${annotation.sentence_id}`}
+                    className="block p-5 hover:bg-gray-50 transition-colors cursor-pointer"
+                  >
                     <div className="flex items-center justify-between">
-                      <div>
+                      <div className="flex-1">
                         <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
                           {annotation.sentence.source_text}
                         </h3>
@@ -482,14 +486,11 @@ const UserDashboard: React.FC = () => {
                           )}
                         </div>
                       </div>
-                      <Link 
-                        to={`/annotate/${annotation.sentence_id}`} 
-                        className="flex items-center justify-center p-2 rounded-full hover:bg-gray-200 transition-colors"
-                      >
+                      <div className="flex items-center justify-center p-2 rounded-full">
                         <ArrowRight className="h-4 w-4 text-gray-400" />
-                      </Link>
+                      </div>
                     </div>
-                  </div>
+                  </Link>
                 );
               })}
             </div>

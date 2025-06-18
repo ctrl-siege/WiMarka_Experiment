@@ -32,6 +32,7 @@ class User(Base):
     # Relationships
     annotations = relationship("Annotation", back_populates="annotator")
     evaluations = relationship("Evaluation", back_populates="evaluator")
+    mt_assessments = relationship("MTQualityAssessment", back_populates="evaluator")
     languages = relationship("UserLanguage", back_populates="user")
 
 class UserLanguage(Base):
@@ -64,6 +65,7 @@ class Sentence(Base):
     
     # Relationships
     annotations = relationship("Annotation", back_populates="sentence")
+    mt_assessments = relationship("MTQualityAssessment", back_populates="sentence")
 
 class TextHighlight(Base):
     __tablename__ = "text_highlights"
@@ -79,6 +81,7 @@ class TextHighlight(Base):
     
     # Annotation details
     comment = Column(Text)  # User's comment about this highlight
+    error_type = Column(String, default='MI_SE')  # Error type: MI_ST, MI_SE, MA_ST, MA_SE
     
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -116,6 +119,48 @@ class Annotation(Base):
     highlights = relationship("TextHighlight", back_populates="annotation", cascade="all, delete-orphan")
     evaluations = relationship("Evaluation", back_populates="annotation")
 
+# Machine Translation Quality Assessment table
+class MTQualityAssessment(Base):
+    __tablename__ = "mt_quality_assessments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    sentence_id = Column(Integer, ForeignKey("sentences.id"))
+    evaluator_id = Column(Integer, ForeignKey("users.id"))
+    
+    # Core quality scores (1-5 scale) 
+    fluency_score = Column(Float)           # How natural and grammatically correct
+    adequacy_score = Column(Float)          # How well it conveys source meaning  
+    overall_quality_score = Column(Float)   # Overall translation quality
+    
+    # Error analysis (JSON stored as text)
+    syntax_errors = Column(Text)            # JSON array of syntax errors
+    semantic_errors = Column(Text)          # JSON array of semantic errors
+    
+    # Quality explanation and suggestions
+    quality_explanation = Column(Text)      # AI-generated explanation
+    correction_suggestions = Column(Text)   # JSON array of suggestions
+    
+    # Processing metadata
+    model_confidence = Column(Float)        # DistilBERT confidence score (0-1)
+    processing_time_ms = Column(Integer)    # Time taken for AI analysis
+    time_spent_seconds = Column(Integer)    # Human evaluator time (optional)
+    
+    # Human feedback (optional overrides)
+    human_feedback = Column(Text)           # Additional human feedback
+    correction_notes = Column(Text)         # Human correction notes
+    
+    # Status tracking
+    evaluation_status = Column(String, default="pending")  # pending, completed, reviewed
+    
+    # Metadata
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    sentence = relationship("Sentence", back_populates="mt_assessments")
+    evaluator = relationship("User", back_populates="mt_assessments")
+
+# Existing Evaluation class (kept for backward compatibility)
 class Evaluation(Base):
     __tablename__ = "evaluations"
     

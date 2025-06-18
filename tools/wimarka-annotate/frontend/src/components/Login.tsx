@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { FileText, AlertCircle, Mail, Lock, LogIn, CheckCircle, HelpCircle } from 'lucide-react';
+import { FileText, AlertCircle, Mail, Lock, LogIn, CheckCircle } from 'lucide-react';
 
 const Login: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -56,6 +56,7 @@ const Login: React.FC = () => {
       }
       
       setError(errorMessage);
+    } finally {
       setIsLoading(false);
     }
   };

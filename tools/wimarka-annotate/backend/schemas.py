@@ -108,6 +108,7 @@ class TextHighlightBase(BaseModel):
     end_index: int
     text_type: str  # 'machine' only
     comment: str
+    error_type: Optional[str] = 'MI_SE'  # MI_ST, MI_SE, MA_ST, MA_SE
 
 class TextHighlightCreate(TextHighlightBase):
     pass
@@ -223,3 +224,106 @@ class UserStats(BaseModel):
     total_annotations: int
     completed_annotations: int
     average_time_per_annotation: float
+
+# Machine Translation Quality Assessment schemas
+class SyntaxErrorSchema(BaseModel):
+    error_type: str  # 'grammar', 'word_order', 'punctuation', 'capitalization'
+    severity: str   # 'minor', 'major', 'critical' 
+    start_position: int
+    end_position: int
+    text_span: str
+    description: str
+    suggested_fix: Optional[str] = None
+
+class SemanticErrorSchema(BaseModel):
+    error_type: str  # 'mistranslation', 'omission', 'addition', 'wrong_sense'
+    severity: str   # 'minor', 'major', 'critical'
+    start_position: int
+    end_position: int
+    text_span: str
+    description: str
+    suggested_fix: Optional[str] = None
+
+class MTQualityAssessmentBase(BaseModel):
+    fluency_score: float
+    adequacy_score: float
+    overall_quality_score: float
+    syntax_errors: List[SyntaxErrorSchema] = []
+    semantic_errors: List[SemanticErrorSchema] = []
+    quality_explanation: str
+    correction_suggestions: List[str] = []
+    model_confidence: float
+    processing_time_ms: int
+    time_spent_seconds: Optional[int] = None
+    human_feedback: Optional[str] = None
+    correction_notes: Optional[str] = None
+    evaluation_status: str = "pending"
+
+class MTQualityAssessmentCreate(BaseModel):
+    sentence_id: int
+    # Optional manual overrides (if evaluator disagrees with AI)
+    fluency_score: Optional[float] = None
+    adequacy_score: Optional[float] = None
+    overall_quality_score: Optional[float] = None
+    
+    # Additional human feedback
+    human_feedback: Optional[str] = None
+    correction_notes: Optional[str] = None
+    time_spent_seconds: Optional[int] = None
+
+class MTQualityAssessmentUpdate(BaseModel):
+    fluency_score: Optional[float] = None
+    adequacy_score: Optional[float] = None
+    overall_quality_score: Optional[float] = None
+    human_feedback: Optional[str] = None
+    correction_notes: Optional[str] = None
+    time_spent_seconds: Optional[int] = None
+    evaluation_status: Optional[str] = None
+
+class MTQualityAssessmentResponse(MTQualityAssessmentBase):
+    id: int
+    sentence_id: int
+    evaluator_id: int
+    created_at: datetime
+    updated_at: datetime
+    sentence: SentenceResponse
+    evaluator: UserResponse
+
+    model_config = {
+        "from_attributes": True
+    }
+
+# Updated Evaluator Stats for MT Quality focus
+class MTEvaluatorStats(BaseModel):
+    total_assessments: int
+    completed_assessments: int
+    pending_assessments: int
+    average_time_per_assessment: float
+    
+    # Quality metrics
+    average_fluency_score: float
+    average_adequacy_score: float
+    average_overall_score: float
+    
+    # Error detection stats
+    total_syntax_errors_found: int
+    total_semantic_errors_found: int
+    
+    # Model performance
+    average_model_confidence: float
+    human_agreement_rate: float  # % of times human agrees with AI assessment
+
+# Legacy evaluation schemas (kept for backward compatibility)
+class EvaluationResponse(EvaluationBase):
+    id: int
+    annotation_id: int
+    evaluator_id: int
+    evaluation_status: str
+    created_at: datetime
+    updated_at: datetime
+    annotation: AnnotationResponse
+    evaluator: UserResponse
+
+    model_config = {
+        "from_attributes": True
+    }

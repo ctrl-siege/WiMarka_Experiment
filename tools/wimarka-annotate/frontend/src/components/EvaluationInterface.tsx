@@ -189,13 +189,28 @@ const EvaluationInterface: React.FC = () => {
       }
 
       // Add highlighted text
+      const errorType = highlight.error_type || 'MI_ST';
+      
+      // Define colors for different error types
+      const getErrorTypeStyle = (type: string) => {
+        switch (type) {
+          case 'MI_ST': return 'bg-yellow-200 border-b-2 border-yellow-400';
+          case 'MI_SE': return 'bg-blue-200 border-b-2 border-blue-400';
+          case 'MA_ST': return 'bg-red-200 border-b-2 border-red-400';
+          case 'MA_SE': return 'bg-purple-200 border-b-2 border-purple-400';
+          default: return 'bg-gray-200 border-b-2 border-gray-400';
+        }
+      };
+      
       elements.push(
         <span
           key={`highlight-${index}`}
-          className="bg-yellow-200 px-1 rounded relative group cursor-help"
-          title={highlight.comment}
+          className={`${getErrorTypeStyle(errorType)} px-1 rounded relative group cursor-help`}
+          title={`[${errorType}] ${highlight.comment}`}
         >
-          {highlight.highlighted_text}
+          <span className="text-xs font-bold text-gray-600">[{errorType}]</span>
+          <span className="mx-1">{highlight.highlighted_text}</span>
+          <span className="text-xs font-bold text-gray-600">[/{errorType}]</span>
         </span>
       );
 

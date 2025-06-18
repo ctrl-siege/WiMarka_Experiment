@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { LogOut, User, BarChart3, FileText, Settings, HelpCircle, Home, CheckSquare } from 'lucide-react';
+import { LogOut, User, BarChart3, FileText, Settings, HelpCircle, Home, CheckSquare, Info } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -104,6 +104,16 @@ const Layout: React.FC<LayoutProps> = ({ children, onShowGuidelines }) => {
             </div>
 
             <div className="flex items-center space-x-4">
+              {/* About Button */}
+              <Link
+                to="/about"
+                className="group flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-all duration-200 hover:scale-105 hover:shadow-md active:scale-95"
+                title="About WiMarka"
+              >
+                <Info className="h-4 w-4 transition-transform duration-200 group-hover:rotate-12 group-hover:scale-110" />
+                <span className="transition-all duration-200">About</span>
+              </Link>
+              
               {/* Help Button */}
               {onShowGuidelines && (
                 <button

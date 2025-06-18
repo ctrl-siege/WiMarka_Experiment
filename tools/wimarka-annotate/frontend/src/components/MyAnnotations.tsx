@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { annotationsAPI } from '../services/api';
 import type { Annotation, TextHighlight, AnnotationUpdate } from '../types';
-import { BarChart3, Calendar, Clock, Star, MessageCircle, Edit, AlertTriangle, X, Plus, Trash2, ChevronRight } from 'lucide-react';
+import { BarChart3, Calendar, Clock, Star, MessageCircle, Edit, AlertTriangle, Plus, Trash2, ChevronRight } from 'lucide-react';
 
 interface TextSegment extends Omit<TextHighlight, 'id' | 'annotation_id' | 'created_at'> {
   id: string; // temporary local ID for UI
@@ -30,9 +30,15 @@ const MyAnnotations: React.FC = () => {
   const [selectedText, setSelectedText] = useState('');
   const [selectedRange, setSelectedRange] = useState<{ start: number; end: number } | null>(null);
   const [tempComment, setTempComment] = useState('');
-  const [activeSentenceId, setActiveSentenceId] = useState<number | null>(null);
+  const [tempErrorType, setTempErrorType] = useState<'MI_ST' | 'MI_SE' | 'MA_ST' | 'MA_SE'>('MI_ST');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
+  
+  // Delete confirmation modal states
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [annotationToDelete, setAnnotationToDelete] = useState<Annotation | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const textRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -79,6 +85,7 @@ const MyAnnotations: React.FC = () => {
         end_index: h.end_index,
         text_type: h.text_type,
         comment: h.comment,
+        error_type: h.error_type || 'MI_ST',
       }))
     });
     setShowWarningModal(false);
@@ -108,6 +115,7 @@ const MyAnnotations: React.FC = () => {
           end_index: h.end_index,
           text_type: h.text_type,
           comment: h.comment,
+          error_type: h.error_type,
         }))
       };
 
@@ -155,10 +163,43 @@ const MyAnnotations: React.FC = () => {
     const endIndex = startIndex + selectedTextValue.length;
     setSelectedText(selectedTextValue);
     setSelectedRange({ start: startIndex, end: endIndex });
-    setActiveSentenceId(sentenceId);
     setShowCommentModal(true);
     
     selection.removeAllRanges();
+  };
+
+  const handleDeleteClick = (annotation: Annotation) => {
+    setAnnotationToDelete(annotation);
+    setShowDeleteModal(true);
+    setDeleteConfirmText('');
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteModal(false);
+    setAnnotationToDelete(null);
+    setDeleteConfirmText('');
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!annotationToDelete || deleteConfirmText !== 'confirm delete') return;
+
+    setIsDeleting(true);
+    try {
+      await annotationsAPI.deleteAnnotation(annotationToDelete.id);
+      
+      setAnnotations(prev => prev.filter(a => a.id !== annotationToDelete.id));
+      setShowDeleteModal(false);
+      setAnnotationToDelete(null);
+      setDeleteConfirmText('');
+      setMessage('Annotation deleted successfully!');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error) {
+      console.error('Error deleting annotation:', error);
+      setMessage('Error deleting annotation. Please try again.');
+      setTimeout(() => setMessage(''), 5000);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const addHighlight = () => {
@@ -171,6 +212,7 @@ const MyAnnotations: React.FC = () => {
       end_index: selectedRange.end,
       comment: tempComment.trim(),
       text_type: 'machine',
+      error_type: tempErrorType,
     };
 
     setEditForm(prev => prev ? {
@@ -186,9 +228,9 @@ const MyAnnotations: React.FC = () => {
 
     setShowCommentModal(false);
     setTempComment('');
+    setTempErrorType('MI_ST');
     setSelectedText('');
     setSelectedRange(null);
-    setActiveSentenceId(null);
   };
 
   const removeHighlight = (highlightId: string) => {
@@ -268,16 +310,32 @@ const MyAnnotations: React.FC = () => {
       }
 
       const highlightedText = text.slice(startIndex, endIndex);
+      const errorType = highlight.error_type || 'MI_ST';
+      
+      // Define colors and tags for different error types
+      const getErrorTypeStyle = (type: string) => {
+        switch (type) {
+          case 'MI_ST': return 'bg-yellow-200 border-b-2 border-yellow-400';
+          case 'MI_SE': return 'bg-blue-200 border-b-2 border-blue-400';
+          case 'MA_ST': return 'bg-red-200 border-b-2 border-red-400';
+          case 'MA_SE': return 'bg-purple-200 border-b-2 border-purple-400';
+          default: return 'bg-gray-200 border-b-2 border-gray-400';
+        }
+      };
+      
       parts.push(
         <span
           key={`highlight-${highlight.id || index}`}
-          className="bg-blue-200 border-b-2 border-blue-400 px-1 rounded cursor-pointer relative group"
-          title={highlight.comment}
+          className={`${getErrorTypeStyle(errorType)} px-1 rounded cursor-pointer relative group`}
+          title={`[${errorType}] ${highlight.comment}`}
         >
-          {highlightedText}
+          <span className="text-xs font-bold text-gray-600">[{errorType}]</span>
+          <span className="mx-1">{highlightedText}</span>
+          <span className="text-xs font-bold text-gray-600">[/{errorType}]</span>
           <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10">
             <div className="bg-gray-800 text-white text-xs rounded py-1 px-2 whitespace-nowrap max-w-xs">
-              {highlight.comment}
+              <div className="font-bold">[{errorType}]</div>
+              <div>{highlight.comment}</div>
             </div>
           </div>
         </span>
@@ -514,15 +572,24 @@ const MyAnnotations: React.FC = () => {
                       </p>
                     </div>
                     
-                    {/* Edit Button */}
+                    {/* Action Buttons */}
                     {!isEditing && (
-                      <button
-                        onClick={() => handleEditClick(annotation)}
-                        className="btn-secondary text-sm flex items-center space-x-2 transition-all duration-300 hover:bg-blue-50 hover:text-blue-600 hover:shadow-md group"
-                      >
-                        <Edit className="h-4 w-4 group-hover:animate-pulse" />
-                        <span className="group-hover:translate-x-0.5 transition-transform duration-300">Edit</span>
-                      </button>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handleEditClick(annotation)}
+                          className="btn-secondary text-sm flex items-center space-x-2 transition-all duration-300 hover:bg-blue-50 hover:text-blue-600 hover:shadow-md group"
+                        >
+                          <Edit className="h-4 w-4 group-hover:animate-pulse" />
+                          <span className="group-hover:translate-x-0.5 transition-transform duration-300">Edit</span>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClick(annotation)}
+                          className="btn-secondary text-sm flex items-center space-x-2 transition-all duration-300 hover:bg-red-50 hover:text-red-600 hover:shadow-md group"
+                        >
+                          <Trash2 className="h-4 w-4 group-hover:animate-pulse" />
+                          <span className="group-hover:translate-x-0.5 transition-transform duration-300">Delete</span>
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -825,6 +892,34 @@ const MyAnnotations: React.FC = () => {
               </div>
             </div>
 
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Error Type
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { value: 'MI_ST', label: 'Minor Syntactic', color: 'yellow' },
+                  { value: 'MI_SE', label: 'Minor Semantic', color: 'blue' },
+                  { value: 'MA_ST', label: 'Major Syntactic', color: 'red' },
+                  { value: 'MA_SE', label: 'Major Semantic', color: 'purple' },
+                ] as const).map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setTempErrorType(option.value)}
+                    className={`p-2 rounded-lg border-2 text-sm font-medium transition-colors ${
+                      tempErrorType === option.value
+                        ? `border-${option.color}-500 bg-${option.color}-50 text-${option.color}-700`
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="font-bold">[{option.value}]</div>
+                    <div className="text-xs">{option.label}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Comment
@@ -844,9 +939,9 @@ const MyAnnotations: React.FC = () => {
                 onClick={() => {
                   setShowCommentModal(false);
                   setTempComment('');
+                  setTempErrorType('MI_ST');
                   setSelectedText('');
                   setSelectedRange(null);
-                  setActiveSentenceId(null);
                 }}
                 className="btn-secondary"
               >
@@ -859,6 +954,85 @@ const MyAnnotations: React.FC = () => {
               >
                 <Plus className="h-4 w-4" />
                 <span>Add Annotation</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && annotationToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center mb-4">
+              <AlertTriangle className="h-6 w-6 text-red-500 mr-3" />
+              <h3 className="text-lg font-medium text-gray-900">
+                Confirm Deletion
+              </h3>
+            </div>
+            
+            <div className="mb-4">
+              <p className="text-gray-600 mb-3">
+                Are you sure you want to delete this annotation? This action cannot be undone.
+              </p>
+              <div className="bg-gray-50 rounded-lg p-3 border">
+                <div className="text-sm text-gray-700">
+                  <strong>Annotation ID:</strong> #{annotationToDelete.id}
+                </div>
+                <div className="text-sm text-gray-700 mt-1">
+                  <strong>Sentence:</strong> {annotationToDelete.sentence.source_text.substring(0, 100)}...
+                </div>
+                <div className="text-sm text-gray-700 mt-1">
+                  <strong>Status:</strong> 
+                  <span className={`ml-2 px-2 py-1 rounded text-xs font-medium ${getStatusColor(annotationToDelete.annotation_status)}`}>
+                    {annotationToDelete.annotation_status}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                To confirm deletion, please type: <strong>confirm delete</strong>
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                placeholder="Type 'confirm delete' to proceed"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleDeleteCancel}
+                className="btn-secondary"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting || deleteConfirmText !== 'confirm delete'}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+                  deleteConfirmText === 'confirm delete' && !isDeleting
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    <span>Delete Annotation</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

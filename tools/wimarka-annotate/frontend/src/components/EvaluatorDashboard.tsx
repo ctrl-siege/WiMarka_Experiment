@@ -1,24 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { evaluationsAPI } from '../services/api';
-import type { EvaluatorStats, Annotation, Evaluation } from '../types';
+import { mtQualityAPI } from '../services/api';
+import type { EvaluatorStats, Sentence, MTQualityAssessment } from '../types';
 import { 
   FileText, 
   Clock, 
-  Star, 
   CheckCircle,
   AlertCircle,
-  BarChart3,
-  Eye,
   Target,
-  Award,
-  Users,
-  Calendar
+  Brain,
+  Zap,
+  TrendingUp
 } from 'lucide-react';
 
 const EvaluatorDashboard: React.FC = () => {
   const [stats, setStats] = useState<EvaluatorStats | null>(null);
-  const [pendingAnnotations, setPendingAnnotations] = useState<Annotation[]>([]);
-  const [recentEvaluations, setRecentEvaluations] = useState<Evaluation[]>([]);
+  const [pendingSentences, setPendingSentences] = useState<Sentence[]>([]);
+  const [recentAssessments, setRecentAssessments] = useState<MTQualityAssessment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -28,15 +25,15 @@ const EvaluatorDashboard: React.FC = () => {
   const loadDashboardData = async () => {
     setIsLoading(true);
     try {
-      const [statsData, pendingData, evaluationsData] = await Promise.all([
-        evaluationsAPI.getEvaluatorStats(),
-        evaluationsAPI.getPendingEvaluations(0, 5),
-        evaluationsAPI.getMyEvaluations(0, 5)
+      const [statsData, pendingData, assessmentsData] = await Promise.all([
+        mtQualityAPI.getEvaluatorStats(),
+        mtQualityAPI.getPendingAssessments(0, 5),
+        mtQualityAPI.getMyAssessments(0, 5)
       ]);
 
       setStats(statsData);
-      setPendingAnnotations(pendingData);
-      setRecentEvaluations(evaluationsData);
+      setPendingSentences(pendingData);
+      setRecentAssessments(assessmentsData);
     } catch (error) {
       console.error('Error loading evaluator dashboard data:', error);
     } finally {
@@ -54,8 +51,8 @@ const EvaluatorDashboard: React.FC = () => {
   };
 
   const getCompletionRate = (): number => {
-    if (!stats || stats.total_evaluations === 0) return 0;
-    return Math.round((stats.completed_evaluations / stats.total_evaluations) * 100);
+    if (!stats || stats.total_assessments === 0) return 0;
+    return Math.round((stats.completed_assessments / stats.total_assessments) * 100);
   };
 
   if (isLoading) {
@@ -80,9 +77,12 @@ const EvaluatorDashboard: React.FC = () => {
       <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Evaluator Dashboard</h1>
-          <p className="mt-2 text-gray-600">
-            Review and evaluate annotations from the annotation team
+          <div className="flex items-center space-x-3 mb-2">
+            <Brain className="h-8 w-8 text-blue-600" />
+            <h1 className="text-3xl font-bold text-gray-900">Machine Translation Evaluator</h1>
+          </div>
+          <p className="text-gray-600">
+            DistilBERT-powered machine translation quality assessment platform
           </p>
         </div>
 
@@ -96,8 +96,8 @@ const EvaluatorDashboard: React.FC = () => {
                 </div>
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Evaluations</p>
-                <p className="text-2xl font-bold text-gray-900">{stats?.total_evaluations || 0}</p>
+                <p className="text-sm font-medium text-gray-600">Total Assessments</p>
+                <p className="text-2xl font-bold text-gray-900">{stats?.total_assessments || 0}</p>
               </div>
             </div>
           </div>
@@ -111,7 +111,7 @@ const EvaluatorDashboard: React.FC = () => {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Completed</p>
-                <p className="text-2xl font-bold text-gray-900">{stats?.completed_evaluations || 0}</p>
+                <p className="text-2xl font-bold text-gray-900">{stats?.completed_assessments || 0}</p>
               </div>
             </div>
           </div>
@@ -125,7 +125,7 @@ const EvaluatorDashboard: React.FC = () => {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Pending</p>
-                <p className="text-2xl font-bold text-gray-900">{stats?.pending_evaluations || 0}</p>
+                <p className="text-2xl font-bold text-gray-900">{stats?.pending_assessments || 0}</p>
               </div>
             </div>
           </div>
@@ -140,18 +140,18 @@ const EvaluatorDashboard: React.FC = () => {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Avg Time</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {stats?.average_time_per_evaluation ? formatTime(Math.round(stats.average_time_per_evaluation)) : '0m'}
+                  {stats?.average_time_per_assessment ? formatTime(Math.round(stats.average_time_per_assessment)) : '0m'}
                 </p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Progress Overview */}
+        {/* Quality Metrics */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Evaluation Progress</h2>
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Assessment Progress</h2>
               
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-2">
@@ -165,38 +165,50 @@ const EvaluatorDashboard: React.FC = () => {
                   />
                 </div>
                 <p className="mt-2 text-sm text-gray-500">
-                  {stats?.completed_evaluations || 0} of {stats?.total_evaluations || 0} evaluations completed
+                  {stats?.completed_assessments || 0} of {stats?.total_assessments || 0} assessments completed
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <div className="flex items-center space-x-2 mb-2">
-                    <BarChart3 className="h-5 w-5 text-blue-500" />
-                    <h3 className="text-sm font-medium text-gray-700">This Week</h3>
+                    <TrendingUp className="h-5 w-5 text-green-500" />
+                    <h3 className="text-sm font-medium text-gray-700">Avg Quality Score</h3>
                   </div>
                   <p className="text-2xl font-bold text-gray-900">
-                    {recentEvaluations.filter(e => {
-                      const oneWeekAgo = new Date();
-                      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-                      return new Date(e.created_at) >= oneWeekAgo;
-                    }).length}
+                    {stats?.average_overall_score ? stats.average_overall_score.toFixed(1) : '0.0'}
                   </p>
-                  <p className="text-sm text-gray-500">evaluations completed</p>
+                  <p className="text-sm text-gray-500">out of 5.0</p>
                 </div>
 
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <div className="flex items-center space-x-2 mb-2">
-                    <Award className="h-5 w-5 text-yellow-500" />
-                    <h3 className="text-sm font-medium text-gray-700">Quality Score</h3>
+                    <Brain className="h-5 w-5 text-purple-500" />
+                    <h3 className="text-sm font-medium text-gray-700">AI Agreement</h3>
                   </div>
                   <p className="text-2xl font-bold text-gray-900">
-                    {recentEvaluations.length > 0 
-                      ? (recentEvaluations.reduce((sum, e) => sum + (e.overall_evaluation_score || 0), 0) / recentEvaluations.length).toFixed(1)
-                      : '0.0'
-                    }
+                    {stats?.human_agreement_rate ? Math.round(stats.human_agreement_rate * 100) : 0}%
                   </p>
-                  <p className="text-sm text-gray-500">average score</p>
+                  <p className="text-sm text-gray-500">human-AI agreement</p>
+                </div>
+              </div>
+
+              {/* Quality Breakdown */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Quality Breakdown</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Fluency</span>
+                    <span className="font-medium">
+                      {stats?.average_fluency_score ? stats.average_fluency_score.toFixed(1) : '0.0'}/5
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Adequacy</span>
+                    <span className="font-medium">
+                      {stats?.average_adequacy_score ? stats.average_adequacy_score.toFixed(1) : '0.0'}/5
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -206,73 +218,84 @@ const EvaluatorDashboard: React.FC = () => {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
             <div className="space-y-3">
               <a
-                href="/evaluate"
+                href="/mt-assess"
                 className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
-                <Eye className="h-5 w-5 text-blue-500 mr-3" />
+                <Zap className="h-5 w-5 text-blue-500 mr-3" />
                 <div>
-                  <p className="font-medium text-gray-900">Start Evaluating</p>
-                  <p className="text-sm text-gray-500">Review pending annotations</p>
+                  <p className="font-medium text-gray-900">Start MT Assessment</p>
+                  <p className="text-sm text-gray-500">Analyze translation quality with AI</p>
                 </div>
               </a>
               
               <a
-                href="/my-evaluations"
+                href="/my-assessments"
                 className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <FileText className="h-5 w-5 text-green-500 mr-3" />
                 <div>
-                  <p className="font-medium text-gray-900">My Evaluations</p>
-                  <p className="text-sm text-gray-500">View completed evaluations</p>
+                  <p className="font-medium text-gray-900">My Assessments</p>
+                  <p className="text-sm text-gray-500">View completed MT assessments</p>
                 </div>
               </a>
+
+              {/* Error Detection Stats */}
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">AI Error Detection</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Syntax Errors Found</span>
+                    <span className="font-medium">{stats?.total_syntax_errors_found || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Semantic Errors Found</span>
+                    <span className="font-medium">{stats?.total_semantic_errors_found || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Model Confidence</span>
+                    <span className="font-medium">{stats?.average_model_confidence ? Math.round(stats.average_model_confidence * 100) : 0}%</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Pending Annotations */}
+        {/* Pending Sentences */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">Pending Annotations</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Pending Sentences</h2>
             <a 
-              href="/evaluate" 
+              href="/mt-assess" 
               className="text-sm font-medium text-blue-600 hover:text-blue-500"
             >
               View all
             </a>
           </div>
           
-          {pendingAnnotations.length > 0 ? (
+          {pendingSentences.length > 0 ? (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden divide-y divide-gray-200">
-              {pendingAnnotations.map((annotation) => (
-                <div key={annotation.id} className="p-5 hover:bg-gray-50 transition-colors">
+              {pendingSentences.map((sentence) => (
+                <div key={sentence.id} className="p-5 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
-                      <h3 className="text-sm font-medium text-gray-900 line-clamp-1 mb-2">
-                        {annotation.sentence.source_text}
-                      </h3>
-                      <div className="flex items-center space-x-4 text-xs text-gray-500">
-                        <span className="flex items-center">
-                          <Users className="h-3 w-3 mr-1" />
-                          {annotation.annotator.first_name} {annotation.annotator.last_name}
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {sentence.source_language} → {sentence.target_language}
                         </span>
-                        <span className="flex items-center">
-                          <Calendar className="h-3 w-3 mr-1" />
-                          {new Date(annotation.created_at).toLocaleDateString()}
-                        </span>
-                        {annotation.overall_quality && (
-                          <span className="flex items-center">
-                            <Star className="h-3 w-3 text-yellow-400 mr-1" />
-                            {annotation.overall_quality}/5
-                          </span>
-                        )}
                       </div>
+                      <h3 className="text-sm font-medium text-gray-900 line-clamp-1 mb-2">
+                        {sentence.source_text}
+                      </h3>
+                      <p className="text-sm text-gray-600 line-clamp-1">
+                        <span className="font-medium">MT:</span> {sentence.machine_translation}
+                      </p>
                     </div>
                     <a
-                      href={`/evaluate/${annotation.id}`}
+                      href={`/mt-assess/${sentence.id}`}
                       className="ml-4 px-3 py-2 text-sm font-medium text-blue-600 hover:text-blue-500 border border-blue-200 rounded-lg hover:bg-blue-50"
                     >
-                      Evaluate
+                      Assess
                     </a>
                   </div>
                 </div>
@@ -281,57 +304,57 @@ const EvaluatorDashboard: React.FC = () => {
           ) : (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
               <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No pending annotations to evaluate</p>
-              <p className="text-sm text-gray-400 mt-1">Check back later for new annotations to review</p>
+              <p className="text-gray-500">No pending sentences for assessment</p>
+              <p className="text-sm text-gray-400 mt-1">Check back later for new sentences to analyze</p>
             </div>
           )}
         </div>
 
-        {/* Recent Evaluations */}
+        {/* Recent Assessments */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">Recent Evaluations</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Recent Assessments</h2>
             <a 
-              href="/my-evaluations" 
+              href="/my-assessments" 
               className="text-sm font-medium text-blue-600 hover:text-blue-500"
             >
               View all
             </a>
           </div>
           
-          {recentEvaluations.length > 0 ? (
+          {recentAssessments.length > 0 ? (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden divide-y divide-gray-200">
-              {recentEvaluations.map((evaluation) => (
-                <div key={evaluation.id} className="p-5">
+              {recentAssessments.map((assessment) => (
+                <div key={assessment.id} className="p-5">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
-                      {evaluation.annotation.sentence.source_text}
+                      {assessment.sentence.source_text}
                     </h3>
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      evaluation.evaluation_status === 'completed' 
+                      assessment.evaluation_status === 'completed' 
                         ? 'bg-green-100 text-green-800' 
                         : 'bg-yellow-100 text-yellow-800'
                     }`}>
-                      {evaluation.evaluation_status.replace('_', ' ')}
+                      {assessment.evaluation_status}
                     </span>
                   </div>
                   
                   <div className="flex items-center space-x-6 text-xs text-gray-500">
                     <span>
-                      Annotator: {evaluation.annotation.annotator.first_name} {evaluation.annotation.annotator.last_name}
+                      Overall: {assessment.overall_quality_score}/5
                     </span>
                     <span>
-                      Evaluated: {new Date(evaluation.created_at).toLocaleDateString()}
+                      Fluency: {assessment.fluency_score}/5
                     </span>
-                    {evaluation.overall_evaluation_score && (
-                      <span className="flex items-center">
-                        <Star className="h-3 w-3 text-yellow-400 mr-1" />
-                        Score: {evaluation.overall_evaluation_score}/5
-                      </span>
-                    )}
-                    {evaluation.time_spent_seconds && (
+                    <span>
+                      Adequacy: {assessment.adequacy_score}/5
+                    </span>
+                    <span>
+                      Assessed: {new Date(assessment.created_at).toLocaleDateString()}
+                    </span>
+                    {assessment.time_spent_seconds && (
                       <span>
-                        Time: {formatTime(evaluation.time_spent_seconds)}
+                        Time: {formatTime(assessment.time_spent_seconds)}
                       </span>
                     )}
                   </div>
@@ -341,8 +364,8 @@ const EvaluatorDashboard: React.FC = () => {
           ) : (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
               <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No evaluations completed yet</p>
-              <p className="text-sm text-gray-400 mt-1">Start evaluating annotations to see your history here</p>
+              <p className="text-gray-500">No assessments completed yet</p>
+              <p className="text-sm text-gray-400 mt-1">Start assessing sentences to see your history here</p>
             </div>
           )}
         </div>

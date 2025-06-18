@@ -1,38 +1,49 @@
-# WiMarka - Annotation Tool
+# WiMarka - MT Quality Assessment Tool
 
-A comprehensive system for linguists and native speakers to annotate machine translated sentences. Built with FastAPI, SQLite, React, and TailwindCSS.
+A comprehensive system for evaluating Machine Translation (MT) quality using DistilBERT-based assessment and human-in-the-loop evaluation. Built with FastAPI, SQLite, React, and TailwindCSS.
 
 ## Features
 
-### For Annotators
-- **Interactive Annotation Interface**: Rate translations on fluency, adequacy, and overall quality (1-5 scale)
-- **Detailed Feedback**: Add error descriptions, suggested corrections, and comments
-- **Time Tracking**: Automatic tracking of annotation time
-- **Progress Tracking**: View your annotation history and statistics
-- **Multi-domain Support**: Handle translations from different domains (medical, legal, technical, etc.)
+### MT Quality Assessment
+- **Automated MT Evaluation**: DistilBERT-based quality scoring (0-100) with confidence levels
+- **Error Detection & Classification**: Automatic detection of syntax and semantic errors
+- **Detailed Explanations**: AI-generated explanations for quality scores and detected errors
+- **Improvement Suggestions**: Automated suggestions for translation improvements
+- **Human Feedback Integration**: Evaluators can confirm, reject, or modify AI assessments
+
+### For Evaluators
+- **Interactive Assessment Interface**: Review AI-generated quality scores and error analyses
+- **Error Management**: Confirm, reject, or add new errors to AI findings
+- **Feedback System**: Provide human judgment on AI assessments with detailed comments
+- **Progress Tracking**: View assessment history and statistics
+- **Quality Metrics**: Track agreement rates with AI and assessment accuracy
 
 ### For Administrators
-- **Admin Dashboard**: Overview of system statistics and user activity
-- **User Management**: View all registered users and their roles
-- **Content Management**: Add new sentences for annotation
-- **Analytics**: Track completion rates and user performance
+- **Admin Dashboard**: Overview of system statistics and evaluation activity
+- **User Management**: View all registered users and their roles (evaluators, admins)
+- **Content Management**: Add new sentences for MT quality assessment
+- **Analytics**: Track evaluation completion rates and AI vs human agreement
 
 ### Technical Features
+- **AI-Powered Assessment**: Simulated DistilBERT model for MT quality evaluation
 - **Secure Authentication**: JWT-based authentication with role-based access control
 - **RESTful API**: Clean FastAPI backend with automatic documentation
-- **Modern UI**: Responsive design with TailwindCSS
-- **Real-time Updates**: Immediate feedback and progress tracking
+- **Modern UI**: Responsive design with TailwindCSS focused on MT evaluation workflows
+- **Real-time Processing**: Immediate AI assessment with human validation capability
 
 ## Tech Stack
 
 ### Backend
+
 - **FastAPI**: Modern Python web framework
 - **SQLAlchemy**: SQL toolkit and ORM
 - **SQLite**: Lightweight database
 - **JWT Authentication**: Secure token-based authentication
 - **Pydantic**: Data validation and serialization
+- **DistilBERT Integration**: (Simulated) AI model for MT quality assessment
 
 ### Frontend
+
 - **React**: Modern JavaScript library for building user interfaces
 - **TypeScript**: Type-safe JavaScript
 - **TailwindCSS**: Utility-first CSS framework
@@ -109,20 +120,24 @@ After running the database initialization script, you can log in with:
 
 ### Database Schema
 
+### Database Schema
+
 **Users Table:**
 - User authentication and profile information
-- Role-based access control (admin/user)
-- Activity tracking
+- Role-based access control (admin/evaluator)
+- Activity tracking and evaluation statistics
 
 **Sentences Table:**
 - Source text and machine translations
 - Reference translations (optional)
 - Language pairs and domain classification
 
-**Annotations Table:**
-- Quality ratings (fluency, adequacy, overall)
-- Detailed feedback and suggestions
-- Time tracking and status management
+**MTQualityAssessment Table:**
+- AI-generated quality scores (0-100) with confidence levels
+- Detected errors with types (syntax/semantic) and descriptions
+- AI explanations and improvement suggestions
+- Human feedback and validation status
+- Error confirmation/rejection by evaluators
 
 ### API Endpoints
 
@@ -133,44 +148,51 @@ After running the database initialization script, you can log in with:
 
 **Sentences:**
 - `GET /api/sentences` - List all sentences
-- `GET /api/sentences/next` - Get next sentence for annotation
+- `GET /api/sentences/next` - Get next sentence for evaluation
 - `POST /api/sentences` - Create new sentence (admin only)
 
-**Annotations:**
-- `POST /api/annotations` - Create new annotation
-- `GET /api/annotations` - Get user's annotations
-- `PUT /api/annotations/{id}` - Update annotation
+**MT Quality Assessment:**
+- `POST /api/mt-quality` - Create new MT quality assessment
+- `GET /api/mt-quality` - Get user's assessments
+- `PUT /api/mt-quality/{id}` - Update assessment with human feedback
+- `GET /api/mt-quality/stats` - Get assessment statistics
+- `POST /api/mt-quality/batch` - Batch process multiple assessments
 
 **Admin:**
-- `GET /api/admin/stats` - System statistics
+- `GET /api/admin/stats` - System statistics including MT quality metrics
 - `GET /api/admin/users` - List all users
-- `GET /api/admin/annotations` - List all annotations
+- `GET /api/admin/mt-quality` - List all MT quality assessments
 
 ## Usage Guide
 
-### For Annotators
+### For Evaluators
 
 1. **Register/Login**: Create an account or log in with existing credentials
-2. **Start Annotating**: Navigate to the annotation interface
-3. **Rate Translations**: Use the 1-5 scale rating buttons for each quality dimension
-4. **Provide Feedback**: Add detailed comments, error descriptions, and suggestions
-5. **Submit**: Save your annotation and move to the next sentence
-6. **Track Progress**: View your annotation history in "My Annotations"
+2. **Start MT Assessment**: Navigate to the MT Quality Assessment interface
+3. **Review AI Analysis**: Examine the AI-generated quality score, detected errors, and explanations
+4. **Provide Human Feedback**: Confirm, reject, or modify AI findings with detailed comments
+5. **Validate Errors**: Mark detected errors as correct or incorrect based on your expertise
+6. **Submit Assessment**: Save your evaluation and move to the next sentence
+7. **Track Progress**: View your assessment history and statistics in "My Evaluations"
 
 ### For Administrators
 
 1. **Access Admin Panel**: Navigate to the admin dashboard (admin users only)
-2. **Monitor Statistics**: View system overview and user activity
-3. **Manage Content**: Add new sentences for annotation
-4. **Review Users**: Monitor user registrations and activity
+2. **Monitor MT Quality**: View system overview and evaluation statistics
+3. **Manage Content**: Add new sentences for MT quality assessment
+4. **Review Evaluators**: Monitor user registrations and evaluation activity
+5. **Analyze Performance**: Track AI vs human agreement rates and assessment quality
 
 ## Quality Metrics
 
-The system uses standard MT evaluation criteria:
+The system uses AI-powered MT evaluation with the following components:
 
-- **Fluency (1-5)**: How natural and grammatically correct is the translation?
-- **Adequacy (1-5)**: How well does the translation convey the source meaning?
-- **Overall Quality (1-5)**: General assessment of translation quality
+- **Overall Quality Score (0-100)**: AI-generated assessment of translation quality
+- **Confidence Level (0-1)**: AI confidence in the quality assessment
+- **Error Detection**: Automatic identification of syntax and semantic errors
+- **Error Types**: Classification of errors into categories (grammar, meaning, style, etc.)
+- **Explanations**: AI-generated explanations for quality scores and detected issues
+- **Human Validation**: Evaluator confirmation or correction of AI assessments
 
 ## Development
 
